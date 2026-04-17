@@ -1,0 +1,22 @@
+node_modules/
+*.log
+.DS_Store
+
+# XML NFC-e
+backend/storage/xml/
+backend/storage/xml/nfe/
+backend/storage/xml/nfce/
+
+# Banco local
+*.db
+*.sqlite
+
+# Logs
+logs/
+*.log
+
+# Build
+dist/
+
+backend/services/fiscal/debug/
+backend/storage/xml/debug-assinatura/
