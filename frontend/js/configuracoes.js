@@ -277,12 +277,20 @@ function renderConfigField(config) {
     const value = config.valor || '';
 
     if (config.chave === 'logo') {
+        const previewUrl = value && value.startsWith('/')
+            ? `${API_URL.replace('/api', '')}${value}`
+            : value;
+
+        const previewImg = previewUrl
+            ? `<img src="${escapeHtml(previewUrl)}" alt="Logo atual" style="max-height: 100px;" />`
+            : '';
+
         return `
             <div>
                 <input type="file" class="form-control" id="logoUpload" accept="image/*">
                 <input type="hidden" id="logo_path" value="${escapeHtml(value)}">
                 <div id="logoPreview" class="mt-2">
-                    ${value ? `<img src="${escapeHtml(value)}" alt="Logo atual" style="max-height: 100px;" />` : ''}
+                    ${previewImg}
                 </div>
             </div>
         `;
@@ -312,7 +320,7 @@ async function uploadLogoFile() {
     const formData = new FormData();
     formData.append('logo', logoInput.files[0]);
 
-    const resp = await fetch(`${API_URL}/configuracoes/logo`, {
+    const resp = await fetch(`${API_URL}/configuracoes/upload-logo`, {
         method: 'POST',
         headers: {
             'Authorization': `Bearer ${localStorage.getItem('token')}`
@@ -348,7 +356,14 @@ async function saveConfiguracoes() {
     $('#configForm .form-control').each(function() {
         const chave = $(this).attr('id');
         const valor = $(this).val();
-        if (!chave || chave === 'logoUpload' || chave === 'logo_path') return;
+        if (!chave || chave === 'logoUpload') return;
+        if (chave === 'logo_path') {
+            configs.push({
+                chave: 'logo',
+                valor: valor
+            });
+            return;
+        }
 
         configs.push({
             chave: chave,

@@ -27,7 +27,7 @@ const logoUpload = multer({
   }
 });
 
-router.post('/logo', logoUpload.single('logo'), (req, res) => {
+const saveLogoConfig = (req, res) => {
   if (!req.file) {
     return res.status(400).json({ error: 'Arquivo de logo não enviado.' });
   }
@@ -58,7 +58,10 @@ router.post('/logo', logoUpload.single('logo'), (req, res) => {
       res.json({ success: true, path: logoPath });
     }
   );
-});
+};
+
+router.post('/logo', logoUpload.single('logo'), saveLogoConfig);
+router.post('/upload-logo', logoUpload.single('logo'), saveLogoConfig);
 
 router.get('/backup', (req, res) => {
   const config = backup.loadConfigSync();

@@ -96,7 +96,7 @@ function bindEventosPDV() {
 
     $('#limpar-carrinho').off('click').on('click', limparCarrinho);
     $('#cancelar-venda').off('click').on('click', cancelarVendaAtual);
-    $('#finalizar-venda').off('click').on('click', finalizarVenda);
+    $('#finalizar-venda').off('click').on('click', abrirModalDecisaoFiscal);
     $('#formaPagamento').off('change').on('change', aoAlterarFormaPagamento);
     $('#clienteBusca').off('input').on('input', async function () {
         const termo = $(this).val().trim();
@@ -578,10 +578,147 @@ function confirmarPagamento(modalEl) {
     const instancia = bootstrap.Modal.getInstance(modalEl);
     if (instancia) instancia.hide();
 
-    finalizarVenda();
+    executarFinalizacaoVenda();
 }
 
-function finalizarVenda() {
+function abrirModalDecisaoFiscal() {
+    if (vendaEmProcessamento) {
+        showNotification('A venda já está sendo processada.', 'warning');
+        return;
+    }
+
+    if (!Array.isArray(carrinho) || carrinho.length === 0) {
+        showNotification('Adicione itens ao carrinho antes de finalizar.', 'warning');
+        return;
+    }
+
+    const formaPagamento = $('#formaPagamento').val();
+
+    if (!formaPagamento) {
+        showNotification('Selecione uma forma de pagamento.', 'warning');
+        return;
+    }
+
+    const clienteId = clienteSelecionado?.id || vendaPrazoInfo?.cliente_id || null;
+    if ((formaPagamento === 'prazo' || formaPagamento === 'fiado') && !clienteId) {
+        showNotification('Para venda fiado/a prazo, selecione um cliente.', 'warning');
+        return;
+    }
+
+    const desconto = parseFloat($('#desconto').val()) || 0;
+    const subtotal = calcularSubtotal();
+    const total = Math.round((Math.max(0, subtotal - desconto)) * 100) / 100;
+
+    if (total <= 0) {
+        showNotification('O total final da venda é inválido.', 'warning');
+        return;
+    }
+
+    $('#modal-container').html(`
+        <div class="modal fade" id="decisaoFiscalModal" tabindex="-1" aria-hidden="true">
+            <div class="modal-dialog modal-sm modal-dialog-centered">
+                <div class="modal-content border-0 shadow">
+                    <div class="modal-header bg-warning">
+                        <h5 class="modal-title text-dark mb-0">Finalizar Venda</h5>
+                        <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Fechar"></button>
+                    </div>
+
+                    <div class="modal-body text-center">
+                        <p class="mb-3">
+                            Deseja emitir NFC-e desta venda agora?
+                        </p>
+
+                        <div class="d-grid gap-2">
+                            <button
+                                type="button"
+                                class="btn btn-secondary btn-fiscal-bloqueado"
+                                onclick="mostrarFiscalEmDesenvolvimento()"
+                                title="Módulo fiscal em desenvolvimento"
+                            >
+                                Sim, emitir NFC-e
+                            </button>
+
+                            <button
+                                type="button"
+                                class="btn btn-success"
+                                onclick="finalizarSemFiscal()"
+                            >
+                                Não, finalizar sem NFC-e
+                            </button>
+                        </div>
+
+                        <small class="text-muted d-block mt-3">
+                            A emissão fiscal está temporariamente em desenvolvimento.
+                        </small>
+                    </div>
+                </div>
+            </div>
+        </div>
+    `);
+
+    const modalEl = document.getElementById('decisaoFiscalModal');
+    const modal = new bootstrap.Modal(modalEl);
+    modal.show();
+}
+
+function mostrarFiscalEmDesenvolvimento() {
+    showNotification('Em desenvolvimento', 'warning');
+}
+
+function finalizarSemFiscal() {
+    const modalEl = document.getElementById('decisaoFiscalModal');
+    const instancia = bootstrap.Modal.getInstance(modalEl);
+
+    if (instancia) {
+        instancia.hide();
+    }
+
+    executarFinalizacaoVenda();
+}
+
+function mostrarModalAvisoDebitoCliente(aviso, totalEmAberto, parcelasVencidas, onConfirm) {
+    const detalhes = [];
+    if (totalEmAberto > 0) {
+        detalhes.push(`Valor em aberto: <strong>${formatCurrency(totalEmAberto)}</strong>`);
+    }
+    if (parcelasVencidas > 0) {
+        detalhes.push(`Parcelas vencidas: <strong>${parcelasVencidas}</strong>`);
+    }
+
+    $('#modal-container').html(`
+        <div class="modal fade" id="debitoAvisoModal" tabindex="-1" aria-hidden="true">
+            <div class="modal-dialog modal-sm modal-dialog-centered">
+                <div class="modal-content border-0 shadow">
+                    <div class="modal-header bg-warning">
+                        <h5 class="modal-title text-dark mb-0">Aviso de Débito</h5>
+                        <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Fechar"></button>
+                    </div>
+                    <div class="modal-body text-center">
+                        <p class="mb-3">${escapeHtml(aviso)}</p>
+                        <p class="mb-3">${detalhes.join('<br>')}</p>
+                        <div class="d-grid gap-2">
+                            <button type="button" class="btn btn-danger" id="confirmar-continuar-debito">Continuar mesmo assim</button>
+                            <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancelar</button>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    `);
+
+    const modalEl = document.getElementById('debitoAvisoModal');
+    const modal = new bootstrap.Modal(modalEl);
+    modal.show();
+
+    $('#confirmar-continuar-debito').off('click').on('click', function() {
+        modal.hide();
+        if (typeof onConfirm === 'function') {
+            onConfirm();
+        }
+    });
+}
+
+function executarFinalizacaoVenda() {
     if (vendaEmProcessamento) {
         showNotification('A venda já está sendo processada.', 'warning');
         return;
@@ -678,10 +815,13 @@ function finalizarVenda() {
 
                 if (xhr.status === 409 && xhr.responseJSON?.pode_continuar) {
                     const aviso = xhr.responseJSON.aviso || 'Cliente possui débitos em aberto.';
-                    if (window.confirm(`${aviso}\nDeseja continuar mesmo assim?`)) {
+                    const totalEmAberto = Number(xhr.responseJSON.total_em_aberto || 0);
+                    const parcelasVencidas = Number(xhr.responseJSON.parcelas_vencidas || 0);
+
+                    mostrarModalAvisoDebitoCliente(aviso, totalEmAberto, parcelasVencidas, function() {
                         payload.forcar = true;
                         enviarVenda(payload);
-                    }
+                    });
                     return;
                 }
 
@@ -751,7 +891,6 @@ function imprimirCupomNaoFiscal(vendaId, venda, total, desconto) {
     }[venda.forma_pagamento] || venda.forma_pagamento;
 
     const clienteNome = venda.cliente_nome || (vendaPrazoInfo?.cliente_nome || '');
-    const clienteInfo = clienteNome ? `<div><strong>Cliente:</strong> ${escapeHtml(clienteNome)}</div>` : '';
 
     const infoPrazo = venda.forma_pagamento === 'prazo' && vendaPrazoInfo ? `
         <div style="margin-top:10px;border-top:1px dashed #000;padding-top:8px;">
@@ -785,7 +924,6 @@ function imprimirCupomNaoFiscal(vendaId, venda, total, desconto) {
                 <div>${dataHora}</div>
                 <div>COMPROVANTE NÃO FISCAL</div>
                 <div>Venda #${vendaId}</div>
-                ${clienteInfo}
             </div>
 
             <div class="itens">
@@ -802,6 +940,7 @@ function imprimirCupomNaoFiscal(vendaId, venda, total, desconto) {
                 Desconto: ${formatCurrency(desconto)}<br>
                 <strong>TOTAL: ${formatCurrency(total)}</strong><br>
                 Forma de Pagamento: ${formaPagamentoTexto}
+                ${clienteNome ? `<br>Cliente: ${escapeHtml(clienteNome)}` : ''}
             </div>
 
             ${infoPrazo}

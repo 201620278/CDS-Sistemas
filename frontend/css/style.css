@@ -467,3 +467,12 @@ main {
         grid-template-columns: 1fr;
     }
 }
+
+.btn-fiscal-bloqueado {
+    opacity: 0.65;
+    cursor: not-allowed;
+}
+
+.btn-fiscal-bloqueado:hover {
+    opacity: 0.65;
+}
