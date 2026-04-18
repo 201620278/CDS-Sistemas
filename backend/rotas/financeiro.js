@@ -3,6 +3,16 @@ const router = express.Router();
 const db = require('../database');
 const moment = require('moment');
 
+console.log('ROTA FINANCEIRO CARREGADA:', __filename);
+
+router.get('/teste-rota-financeiro', (req, res) => {
+  res.json({
+    ok: true,
+    arquivo: __filename,
+    mensagem: 'rota financeiro ativa'
+  });
+});
+
 function parseNumber(value) {
   const number = Number(value);
   return Number.isFinite(number) ? number : 0;
@@ -322,46 +332,6 @@ router.post('/pagar/:id/baixar', (req, res) => {
         return;
       }
       res.json({ success: true, message: 'Pagamento baixado com sucesso.', status: novoStatus });
-    });
-  });
-});
-
-router.get('/:id', (req, res) => {
-  const { id } = req.params;
-  db.get('SELECT * FROM financeiro WHERE id = ?', [id], (err, row) => {
-    if (err) {
-      res.status(500).json({ error: err.message });
-      return;
-    }
-    if (!row) {
-      res.status(404).json({ error: 'Movimentação não encontrada' });
-      return;
-    }
-    res.json(row);
-  });
-});
-
-router.delete('/:id', (req, res) => {
-  const { id } = req.params;
-  db.get('SELECT origem FROM financeiro WHERE id = ?', [id], (err, row) => {
-    if (err) {
-      res.status(500).json({ error: err.message });
-      return;
-    }
-    if (!row) {
-      res.status(404).json({ error: 'Movimentação não encontrada.' });
-      return;
-    }
-    if (row.origem && row.origem !== 'manual') {
-      res.status(400).json({ error: 'Movimentações automáticas devem ser removidas na origem (compra/venda).' });
-      return;
-    }
-    db.run('DELETE FROM financeiro WHERE id = ?', [id], function(deleteErr) {
-      if (deleteErr) {
-        res.status(500).json({ error: deleteErr.message });
-        return;
-      }
-      res.json({ message: 'Movimentação deletada com sucesso' });
     });
   });
 });
@@ -1210,6 +1180,46 @@ router.get('/relatorios/inadimplencia', (req, res) => {
       valorAtraso: valorAtraso,
       contasAtraso: inadimplentes,
       periodo: { dataInicio, dataFim }
+    });
+  });
+});
+
+router.get('/:id(\\d+)', (req, res) => {
+  const { id } = req.params;
+  db.get('SELECT * FROM financeiro WHERE id = ?', [id], (err, row) => {
+    if (err) {
+      res.status(500).json({ error: err.message });
+      return;
+    }
+    if (!row) {
+      res.status(404).json({ error: 'Movimentação não encontrada' });
+      return;
+    }
+    res.json(row);
+  });
+});
+
+router.delete('/:id(\\d+)', (req, res) => {
+  const { id } = req.params;
+  db.get('SELECT origem FROM financeiro WHERE id = ?', [id], (err, row) => {
+    if (err) {
+      res.status(500).json({ error: err.message });
+      return;
+    }
+    if (!row) {
+      res.status(404).json({ error: 'Movimentação não encontrada.' });
+      return;
+    }
+    if (row.origem && row.origem !== 'manual') {
+      res.status(400).json({ error: 'Movimentações automáticas devem ser removidas na origem (compra/venda).' });
+      return;
+    }
+    db.run('DELETE FROM financeiro WHERE id = ?', [id], function(deleteErr) {
+      if (deleteErr) {
+        res.status(500).json({ error: deleteErr.message });
+        return;
+      }
+      res.json({ message: 'Movimentação deletada com sucesso' });
     });
   });
 });

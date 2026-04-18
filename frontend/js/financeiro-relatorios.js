@@ -330,6 +330,7 @@ async function gerarRelatorioResumo(filtros) {
   try {
     const response = await fetch(`/api/financeiro/relatorios/resumo?dataInicio=${filtros.dataInicio}&dataFim=${filtros.dataFim}`, {
       headers: {
+        'Accept': 'application/json',
         'Authorization': 'Bearer ' + localStorage.getItem('token')
       }
     });
@@ -347,6 +348,7 @@ async function gerarRelatorioReceber(filtros) {
   try {
     const response = await fetch(`/api/financeiro/relatorios/receber?dataInicio=${filtros.dataInicio}&dataFim=${filtros.dataFim}&status=${filtros.status}&cliente=${filtros.cliente}`, {
       headers: {
+        'Accept': 'application/json',
         'Authorization': 'Bearer ' + localStorage.getItem('token')
       }
     });
@@ -364,6 +366,7 @@ async function gerarRelatorioPagar(filtros) {
   try {
     const response = await fetch(`/api/financeiro/relatorios/pagar?dataInicio=${filtros.dataInicio}&dataFim=${filtros.dataFim}&status=${filtros.status}&fornecedor=${filtros.fornecedor}`, {
       headers: {
+        'Accept': 'application/json',
         'Authorization': 'Bearer ' + localStorage.getItem('token')
       }
     });
@@ -381,6 +384,7 @@ async function gerarRelatorioFluxo(filtros) {
   try {
     const response = await fetch(`/api/financeiro/relatorios/fluxo?dataInicio=${filtros.dataInicio}&dataFim=${filtros.dataFim}`, {
       headers: {
+        'Accept': 'application/json',
         'Authorization': 'Bearer ' + localStorage.getItem('token')
       }
     });
@@ -398,6 +402,7 @@ async function gerarRelatorioInadimplencia(filtros) {
   try {
     const response = await fetch(`/api/financeiro/relatorios/inadimplencia?dataInicio=${filtros.dataInicio}&dataFim=${filtros.dataFim}`, {
       headers: {
+        'Accept': 'application/json',
         'Authorization': 'Bearer ' + localStorage.getItem('token')
       }
     });

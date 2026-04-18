@@ -25,10 +25,11 @@ app.use('/storage', express.static(path.join(__dirname, '../storage')));
 function verificarToken(req, res, next) {
     const authHeader = req.headers['authorization'];
     const token = authHeader && authHeader.split(' ')[1];
+    const isApiRequest = req.originalUrl.startsWith('/api');
     
     if (!token) {
-        // Se for requisição de página HTML, redirecionar para login
-        if (req.accepts('html')) {
+        // Redireciona somente páginas HTML; API deve sempre retornar JSON
+        if (!isApiRequest && req.accepts('html')) {
             return res.redirect('/login');
         }
         return res.status(401).json({ error: 'Acesso negado' });
@@ -36,7 +37,7 @@ function verificarToken(req, res, next) {
     
     jwt.verify(token, JWT_SECRET, (err, user) => {
         if (err) {
-            if (req.accepts('html')) {
+            if (!isApiRequest && req.accepts('html')) {
                 return res.redirect('/login');
             }
             return res.status(403).json({ error: 'Token inválido ou expirado' });
