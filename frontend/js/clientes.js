@@ -1,3 +1,11 @@
+function normalizarTexto(texto) {
+    return String(texto || '')
+        .normalize('NFD')
+        .replace(/[\u0300-\u036f]/g, '')
+        .normalize('NFC')
+        .toLowerCase();
+}
+
 // Load clientes page
 function loadClientes() {
     $.ajax({
@@ -79,9 +87,9 @@ function renderClientes(clientes) {
     `;
     $('#page-content').html(html);
     $('#buscaCliente').on('input', function() {
-        const termo = $(this).val().toLowerCase();
+        const termo = normalizarTexto($(this).val());
         const filtrados = clientes.filter(c =>
-            (c.nome && c.nome.toLowerCase().includes(termo)) ||
+            (c.nome && normalizarTexto(c.nome).includes(termo)) ||
             (c.cpf_cnpj && String(c.cpf_cnpj).toLowerCase().includes(termo))
         );
         $('#clientes-tbody').html(filtrados.map(c => `

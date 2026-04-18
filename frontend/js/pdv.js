@@ -7,6 +7,14 @@ let vendaPrazoInfo = null;
 let vendaEmProcessamento = false;
 let pdvClockInterval = null;
 
+function normalizarTexto(texto) {
+    return String(texto || '')
+        .normalize('NFD')
+        .replace(/[\u0300-\u036f]/g, '')
+        .normalize('NFC')
+        .toLowerCase();
+}
+
 function loadPDV() {
     console.log('Carregando PDV...');
 
@@ -157,11 +165,15 @@ function aoAlterarFormaPagamento() {
     const formaPagamento = $('#formaPagamento').val();
     const boxCliente = $('#pdvClienteBox');
 
-    if (formaPagamento === 'prazo' || formaPagamento === 'fiado') {
+    if (formaPagamento === 'prazo') {
         boxCliente.show();
+        const hoje = new Date();
+        const primeiroVencimento = new Date(hoje.getFullYear(), hoje.getMonth() + 1, hoje.getDate());
+        $('#data-recebimento-prazo').val(primeiroVencimento.toISOString().split('T')[0]);
     } else {
         boxCliente.hide();
         removerClienteSelecionado();
+        $('#data-recebimento-prazo').val('');
     }
 }
 
@@ -248,10 +260,10 @@ function adicionarProdutoPorCodigo(codigo) {
         return;
     }
 
-    const busca = codigo.toString().trim().toLowerCase();
+    const busca = normalizarTexto(codigo);
     const produto = produtosDisponiveis.find(p => {
-        const cod = String(p.codigo || '').trim().toLowerCase();
-        const nome = String(p.nome || '').trim().toLowerCase();
+        const cod = normalizarTexto(p.codigo);
+        const nome = normalizarTexto(p.nome);
         return (cod && (cod === busca || cod.includes(busca))) || (nome && nome.includes(busca));
     });
 
@@ -479,7 +491,7 @@ function selecionarPagamento(tipo) {
         $('#primeiro-vencimento-prazo').val(primeiroVencimento.toISOString().split('T')[0]);
 
         $('#cliente-prazo-busca').off('input').on('input', function() {
-            const termo = $(this).val().toLowerCase().trim();
+            const termo = normalizarTexto($(this).val()).trim();
             if (termo.length < 2) {
                 $('#cliente-prazo-sugestoes').empty().hide();
                 $('#cliente-prazo-id').val('');
@@ -491,7 +503,7 @@ function selecionarPagamento(tipo) {
                 method: 'GET',
                 success: function(clientes) {
                     const filtrados = (clientes || []).filter(c =>
-                        String(c.nome || '').toLowerCase().includes(termo) ||
+                        normalizarTexto(c.nome).includes(termo) ||
                         String(c.cpf_cnpj || '').replace(/\D/g, '').includes(termo.replace(/\D/g, ''))
                     );
 
@@ -600,8 +612,8 @@ function abrirModalDecisaoFiscal() {
     }
 
     const clienteId = clienteSelecionado?.id || vendaPrazoInfo?.cliente_id || null;
-    if ((formaPagamento === 'prazo' || formaPagamento === 'fiado') && !clienteId) {
-        showNotification('Para venda fiado/a prazo, selecione um cliente.', 'warning');
+    if (formaPagamento === 'prazo' && !clienteId) {
+        showNotification('Para venda a prazo, selecione um cliente.', 'warning');
         return;
     }
 
@@ -737,8 +749,8 @@ function executarFinalizacaoVenda() {
     }
 
     const clienteId = clienteSelecionado?.id || vendaPrazoInfo?.cliente_id || null;
-    if ((formaPagamento === 'prazo' || formaPagamento === 'fiado') && !clienteId) {
-        showNotification('Para venda fiado/a prazo, selecione um cliente.', 'warning');
+    if (formaPagamento === 'prazo' && !clienteId) {
+        showNotification('Para venda a prazo, selecione um cliente.', 'warning');
         return;
     }
 
@@ -767,14 +779,13 @@ function executarFinalizacaoVenda() {
     };
 
     if (formaPagamento === 'prazo') {
-        dados.parcelas = vendaPrazoInfo?.parcelas || 1;
-        if (vendaPrazoInfo?.primeiro_vencimento) {
-            dados.primeiro_vencimento = vendaPrazoInfo.primeiro_vencimento;
-        } else {
-            const prazoData = new Date();
-            prazoData.setDate(prazoData.getDate() + 30);
-            dados.primeiro_vencimento = prazoData.toISOString().split('T')[0];
+        const dataRecebimento = vendaPrazoInfo?.primeiro_vencimento || $('#data-recebimento-prazo').val();
+        if (!dataRecebimento) {
+            showNotification('Informe a data de recebimento da venda a prazo.', 'warning');
+            return;
         }
+        dados.parcelas = vendaPrazoInfo?.parcelas || 1;
+        dados.primeiro_vencimento = dataRecebimento;
     }
 
     vendaEmProcessamento = true;
@@ -966,3 +977,6 @@ function imprimirCupomNaoFiscal(vendaId, venda, total, desconto) {
     printWindow.focus();
     printWindow.print();
 }
+
+
+

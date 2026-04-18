@@ -109,6 +109,29 @@ router.post('/', (req, res) => {
 
   const { cliente_id, total, desconto, forma_pagamento, itens, parcelas, primeiro_vencimento, forcar, emitir_fiscal } = req.body;
   const totalNum = Number(total);
+  const formasPendentes = ['prazo'];
+  const formaPagamentoNormalizada = String(forma_pagamento || '').toLowerCase().trim();
+  const vendaFicaPendente = formasPendentes.includes(formaPagamentoNormalizada);
+
+  const buscarNomeCliente = (callback) => {
+    if (!cliente_id) {
+      callback(null, null);
+      return;
+    }
+
+    db.get(
+      'SELECT nome FROM clientes WHERE id = ?',
+      [cliente_id],
+      (err, cliente) => {
+        if (err) {
+          callback(err);
+          return;
+        }
+
+        callback(null, cliente ? cliente.nome : null);
+      }
+    );
+  };
 
   if (!itens || !Array.isArray(itens) || itens.length === 0) {
     res.status(400).json({ error: 'Informe ao menos um item na venda.' });
@@ -119,9 +142,9 @@ router.post('/', (req, res) => {
     return;
   }
 
-  if ((forma_pagamento === 'prazo' || forma_pagamento === 'fiado') && !cliente_id) {
+  if (forma_pagamento === 'prazo' && !cliente_id) {
     return res.status(400).json({
-      error: 'Cliente é obrigatório para venda a prazo/fiado.'
+      error: 'Cliente é obrigatório para venda a prazo.'
     });
   }
 
@@ -243,45 +266,56 @@ router.post('/', (req, res) => {
                     `, [vendaId, cliente_id, i, qtdParcelas, valorParcela, valorParcela, vencimento.format('YYYY-MM-DD')]);
                     vencimento = vencimento.add(1, 'months');
                   }
-                  const inserirFinanceiroPrazo = (indice = 1, venc = moment(primeiro_vencimento, 'YYYY-MM-DD')) => {
-                    if (indice > qtdParcelas) {
-                      db.run('COMMIT');
-                      responderVendaComFiscal(res, {
-                        vendaId,
-                        codigo,
-                        message: 'Venda a prazo registrada com sucesso',
-                        emitirFiscal: !!emitir_fiscal
-                      });
+                  buscarNomeCliente((clienteErr, clienteNome) => {
+                    if (clienteErr) {
+                      db.run('ROLLBACK');
+                      res.status(500).json({ error: clienteErr.message });
                       return;
                     }
-                    db.run(`
-                      INSERT INTO financeiro (
-                        tipo, descricao, valor, data_movimento, categoria, forma_pagamento,
-                        referencia_id, referencia_tipo, status, origem, documento, vencimento,
-                        numero_parcela, total_parcelas, venda_id, pessoa_nome, baixado_em
-                      ) VALUES ('receita', ?, ?, ?, 'vendas', ?, ?, 'venda', 'pendente', 'venda', ?, ?, ?, ?, ?, ?, NULL)
-                    `, [
-                      `Venda ${codigo} - Parcela ${indice}/${qtdParcelas}`,
-                      valorParcela,
-                      data_venda,
-                      forma_pagamento,
-                      vendaId,
-                      codigo,
-                      venc.format('YYYY-MM-DD'),
-                      indice,
-                      qtdParcelas,
-                      vendaId,
-                      cliente_id || null
-                    ], (finErr) => {
-                      if (finErr) {
-                        db.run('ROLLBACK');
-                        res.status(500).json({ error: finErr.message });
+
+                    const inserirFinanceiroPrazo = (indice = 1, venc = moment(primeiro_vencimento, 'YYYY-MM-DD')) => {
+                      if (indice > qtdParcelas) {
+                        db.run('COMMIT');
+                        responderVendaComFiscal(res, {
+                          vendaId,
+                          codigo,
+                          message: 'Venda a prazo registrada com sucesso',
+                          emitirFiscal: !!emitir_fiscal
+                        });
                         return;
                       }
-                      inserirFinanceiroPrazo(indice + 1, moment(venc).add(1, 'months'));
-                    });
-                  };
-                  inserirFinanceiroPrazo();
+
+                      db.run(`
+                        INSERT INTO financeiro (
+                          tipo, descricao, valor, data_movimento, categoria, forma_pagamento,
+                          referencia_id, referencia_tipo, status, origem, documento, vencimento,
+                          numero_parcela, total_parcelas, venda_id, pessoa_nome, baixado_em
+                        ) VALUES ('receita', ?, ?, ?, 'vendas', ?, ?, 'venda', 'pendente', 'venda', ?, ?, ?, ?, ?, ?, NULL)
+                      `, [
+                        `Venda ${codigo} - Parcela ${indice}/${qtdParcelas}`,
+                        valorParcela,
+                        data_venda,
+                        forma_pagamento,
+                        vendaId,
+                        codigo,
+                        venc.format('YYYY-MM-DD'),
+                        indice,
+                        qtdParcelas,
+                        vendaId,
+                        clienteNome
+                      ], (finErr) => {
+                        if (finErr) {
+                          db.run('ROLLBACK');
+                          res.status(500).json({ error: finErr.message });
+                          return;
+                        }
+
+                        inserirFinanceiroPrazo(indice + 1, moment(venc).add(1, 'months'));
+                      });
+                    };
+
+                    inserirFinanceiroPrazo();
+                  });
                 }
               });
             });
@@ -331,7 +365,7 @@ router.post('/', (req, res) => {
               }
               itensProcessados++;
               if (itensProcessados === itens.length) {
-                const statusFinanceiro = forma_pagamento === 'credito' || forma_pagamento === 'fiado' ? 'pendente' : 'recebido';
+                const statusFinanceiro = vendaFicaPendente ? 'pendente' : 'recebido';
                 const baixadoEm = statusFinanceiro === 'recebido' ? data_venda : null;
                 const finalizarResposta = () => {
                   db.run('COMMIT');
@@ -344,7 +378,7 @@ router.post('/', (req, res) => {
                 };
 
                 const inserirContasReceberSeNecessario = (callback) => {
-                  if ((forma_pagamento === 'fiado' || forma_pagamento === 'prazo') && cliente_id) {
+                  if (forma_pagamento === 'prazo' && cliente_id) {
                     const valorParcela = totalNum;
                     db.run(`
                       INSERT INTO contas_receber (
@@ -364,51 +398,60 @@ router.post('/', (req, res) => {
                   }
                 };
 
-                db.run(`
-                  INSERT INTO financeiro (
-                    tipo, descricao, valor, data_movimento, categoria, forma_pagamento,
-                    referencia_id, referencia_tipo, status, origem, documento, vencimento,
-                    numero_parcela, total_parcelas, venda_id, pessoa_nome, baixado_em
-                  ) VALUES ('receita', ?, ?, ?, 'vendas', ?, ?, 'venda', ?, 'venda', ?, ?, 1, 1, ?, ?, ?)
-                `, [
-                  `Venda ${codigo}`,
-                  totalNum,
-                  data_venda,
-                  forma_pagamento,
-                  vendaId,
-                  statusFinanceiro,
-                  codigo,
-                  data_venda,
-                  vendaId,
-                  cliente_id || null,
-                  baixadoEm
-                ], (finErr) => {
-                  if (finErr) {
+                buscarNomeCliente((clienteErr, clienteNome) => {
+                  if (clienteErr) {
                     db.run('ROLLBACK');
-                    res.status(500).json({ error: finErr.message });
+                    res.status(500).json({ error: clienteErr.message });
                     return;
                   }
 
-                  const aposFinanceiro = () => {
-                    if (forma_pagamento === 'credito' && cliente_id) {
-                      db.run(`
-                        UPDATE clientes
-                        SET credito_atual = COALESCE(credito_atual, 0) + ?
-                        WHERE id = ?
-                      `, [totalNum, cliente_id], (credErr) => {
-                        if (credErr) {
-                          db.run('ROLLBACK');
-                          res.status(500).json({ error: credErr.message });
-                          return;
-                        }
-                        finalizarResposta();
-                      });
-                    } else {
-                      finalizarResposta();
+                  db.run(`
+                    INSERT INTO financeiro (
+                      tipo, descricao, valor, data_movimento, categoria, forma_pagamento,
+                      referencia_id, referencia_tipo, status, origem, documento, vencimento,
+                      numero_parcela, total_parcelas, venda_id, pessoa_nome, baixado_em
+                    ) VALUES ('receita', ?, ?, ?, 'vendas', ?, ?, 'venda', ?, 'venda', ?, ?, 1, 1, ?, ?, ?)
+                  `, [
+                    `Venda ${codigo}`,
+                    totalNum,
+                    data_venda,
+                    forma_pagamento,
+                    vendaId,
+                    statusFinanceiro,
+                    codigo,
+                    data_venda,
+                    vendaId,
+                    clienteNome,
+                    baixadoEm
+                  ], (finErr) => {
+                    if (finErr) {
+                      db.run('ROLLBACK');
+                      res.status(500).json({ error: finErr.message });
+                      return;
                     }
-                  };
 
-                  inserirContasReceberSeNecessario(aposFinanceiro);
+                    const aposFinanceiro = () => {
+                      if (forma_pagamento === 'prazo' && cliente_id) {
+                        db.run(`
+                          UPDATE clientes
+                          SET credito_atual = COALESCE(credito_atual, 0) + ?
+                          WHERE id = ?
+                        `, [totalNum, cliente_id], (credErr) => {
+                          if (credErr) {
+                            db.run('ROLLBACK');
+                            res.status(500).json({ error: credErr.message });
+                            return;
+                          }
+
+                          finalizarResposta();
+                        });
+                      } else {
+                        finalizarResposta();
+                      }
+                    };
+
+                    inserirContasReceberSeNecessario(aposFinanceiro);
+                  });
                 });
               }
             });

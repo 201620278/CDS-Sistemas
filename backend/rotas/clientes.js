@@ -3,6 +3,14 @@ const router = express.Router();
 const db = require('../database');
 const { verificarToken: autenticarToken } = require('./auth');
 
+function normalizarTexto(texto) {
+  return String(texto || '')
+    .normalize('NFD')
+    .replace(/[\u0300-\u036f]/g, '')
+    .normalize('NFC')
+    .toLowerCase();
+}
+
 // Listar todos os clientes
 router.get('/', (req, res) => {
   db.all('SELECT * FROM clientes ORDER BY nome', (err, rows) => {
@@ -21,23 +29,29 @@ router.get('/buscar', autenticarToken, (req, res) => {
     return res.json([]);
   }
 
-  const like = `%${termo}%`;
+  const termoNormalizado = normalizarTexto(termo);
+  const termoNumeros = termo.replace(/\D/g, '');
   const sql = `
     SELECT id, nome, cpf_cnpj, telefone
     FROM clientes
-    WHERE nome LIKE ?
-       OR cpf_cnpj LIKE ?
-       OR telefone LIKE ?
     ORDER BY nome ASC
-    LIMIT 20
   `;
 
-  db.all(sql, [like, like, like], (err, rows) => {
+  db.all(sql, [], (err, rows) => {
     if (err) {
       console.error('Erro ao buscar clientes:', err);
       return res.status(500).json({ error: 'Erro ao buscar clientes' });
     }
-    res.json(rows || []);
+
+    const filtrados = (rows || []).filter(cliente => {
+      const nome = normalizarTexto(cliente.nome);
+      const cpf = String(cliente.cpf_cnpj || '');
+      const telefone = String(cliente.telefone || '');
+      const cpfTelefoneMatch = termoNumeros && (cpf.replace(/\D/g, '').includes(termoNumeros) || telefone.replace(/\D/g, '').includes(termoNumeros));
+      return nome.includes(termoNormalizado) || cpfTelefoneMatch;
+    }).slice(0, 20);
+
+    res.json(filtrados);
   });
 });
 

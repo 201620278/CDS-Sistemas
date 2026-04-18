@@ -79,15 +79,24 @@
                     <option value="pix">Pix</option>
                     <option value="cartao_credito">Cartão de Crédito</option>
                     <option value="cartao_debito">Cartão de Débito</option>
-                    <option value="prazo">Fiado / A prazo</option>
+                    <option value="prazo">A Prazo</option>
                 </select>
 
                 <div class="pdv-cliente-box mt-3" id="pdvClienteBox" style="display:none;">
                     <div class="d-flex flex-wrap align-items-start gap-2 mb-2">
-                        <label for="clienteBusca" class="form-label mb-0">Cliente (obrigatório para fiado)</label>
+                        <label for="clienteBusca" class="form-label mb-0">Cliente (obrigatório para venda a prazo)</label>
                         <button type="button" class="btn btn-outline-primary btn-sm" onclick="abrirCadastroCliente()">+ Novo Cliente</button>
                     </div>
-                    <input type="text" class="form-control mb-2" id="clienteBusca" placeholder="Digite nome, CPF ou telefone">
+                    <div class="row g-2 mb-2">
+                        <div class="col-md-7">
+                            <label for="clienteBusca" class="form-label mb-1">Cliente *</label>
+                            <input type="text" class="form-control" id="clienteBusca" placeholder="Digite nome, CPF ou telefone">
+                        </div>
+                        <div class="col-md-5">
+                            <label for="data-recebimento-prazo" class="form-label mb-1">Data de recebimento *</label>
+                            <input type="date" class="form-control" id="data-recebimento-prazo">
+                        </div>
+                    </div>
                     <div id="clienteResultados" class="cliente-resultados"></div>
 
                     <div id="clienteSelecionado" class="cliente-selecionado mt-3" style="display:none;">
@@ -109,3 +118,4 @@
         </div>
     </div>
 </div>
+<div id="modal-container"></div>

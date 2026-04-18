@@ -1,3 +1,11 @@
+function normalizarTexto(texto) {
+    return String(texto || '')
+        .normalize('NFD')
+        .replace(/[\u0300-\u036f]/g, '')
+        .normalize('NFC')
+        .toLowerCase();
+}
+
 // Função utilitária para normalizar produto com categoria e subcategoria
 function normalizarProduto(produto, categorias = window.categoriasSistema || []) {
     const categoriaId = String(produto.categoria_id || produto.categoriaId || '');
@@ -115,13 +123,13 @@ function renderProdutos(produtos) {
     $('#page-content').html(html);
 
     $('#buscaProduto').on('input', function () {
-        const termo = ($(this).val() || '').toLowerCase().trim();
+        const termo = normalizarTexto($(this).val()).trim();
 
         const filtrados = produtos.filter(p =>
-            (p.nome && String(p.nome).toLowerCase().includes(termo)) ||
-            (p.codigo && String(p.codigo).toLowerCase().includes(termo)) ||
-            (p.categoria && String(p.categoria).toLowerCase().includes(termo)) ||
-            (p.fornecedor && String(p.fornecedor).toLowerCase().includes(termo))
+            (p.nome && normalizarTexto(p.nome).includes(termo)) ||
+            (p.codigo && normalizarTexto(p.codigo).includes(termo)) ||
+            (p.categoria && normalizarTexto(p.categoria).includes(termo)) ||
+            (p.fornecedor && normalizarTexto(p.fornecedor).includes(termo))
         );
 
         $('#produtos-tbody').html(renderProdutosRows(filtrados));

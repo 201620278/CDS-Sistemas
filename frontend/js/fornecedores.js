@@ -1,5 +1,13 @@
 let fornecedoresCache = [];
 
+function normalizarTexto(texto) {
+  return String(texto || '')
+    .normalize('NFD')
+    .replace(/[\u0300-\u036f]/g, '')
+    .normalize('NFC')
+    .toLowerCase();
+}
+
 function loadFornecedores() {
   $('#page-content').html(`
     <div class="fornecedores-page">
@@ -328,7 +336,7 @@ function limparFormularioFornecedor() {
 }
 
 function filtrarFornecedores() {
-  const termo = ($('#buscaFornecedor').val() || '').toLowerCase().trim();
+  const termo = normalizarTexto($('#buscaFornecedor').val() || '').trim();
 
   if (!termo) {
     renderFornecedores(fornecedoresCache);
@@ -346,7 +354,7 @@ function filtrarFornecedores() {
       f.cidade
     ]
       .filter(Boolean)
-      .some(valor => String(valor).toLowerCase().includes(termo));
+      .some(valor => normalizarTexto(valor).includes(termo));
   });
 
   renderFornecedores(filtrados);
