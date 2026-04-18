@@ -16,9 +16,12 @@ function renderContasPagar(periodo) {
       </div>
       <div class="financeiro-filtro-grupo">
         <label for="filtroFornecedorPagar">Fornecedor:</label>
-        <select id="filtroFornecedorPagar" class="form-control">
-          <option value="">Todos os fornecedores</option>
-        </select>
+        <input
+          type="text"
+          id="filtroFornecedorPagar"
+          class="form-control"
+          placeholder="Nome, CPF ou CNPJ do fornecedor"
+        />
       </div>
       <div class="financeiro-acoes">
         <button class="btn btn-danger" onclick="novaDespesa()">
@@ -67,12 +70,10 @@ function configurarFiltrosPagar() {
     statusField.addEventListener('change', filtrarPagar);
   }
   if (fornecedorField) {
-    fornecedorField.addEventListener('change', filtrarPagar);
+    fornecedorField.addEventListener('input', filtrarPagar);
   }
-
-  // Carregar lista de fornecedores
-  carregarFornecedoresPagar();
 }
+
 
 async function carregarFornecedoresPagar() {
   try {
@@ -99,13 +100,29 @@ async function carregarFornecedoresPagar() {
 
 async function carregarContasPagarDados(filtros) {
   try {
-    const queryString = new URLSearchParams(filtros).toString();
-    const response = await fetch(`/api/financeiro/contas-pagar?${queryString}`, {
+    const params = new URLSearchParams({
+      dataInicio: filtros.dataInicio || '',
+      dataFim: filtros.dataFim || '',
+      status: filtros.status || 'todos',
+      fornecedor: filtros.fornecedor || ''
+    });
+
+    const response = await fetch(`/api/financeiro/contas-pagar?${params.toString()}`, {
       headers: {
+        'Accept': 'application/json',
         'Authorization': 'Bearer ' + localStorage.getItem('token')
       }
     });
+
+    if (response.status === 401) {
+      throw new Error('Sessão expirada. Faça login novamente.');
+    }
+
     const dados = await response.json();
+
+    if (!response.ok) {
+      throw new Error(dados.error || 'Erro ao carregar contas a pagar');
+    }
 
     const tbody = document.querySelector('#tabelaPagar tbody');
 
@@ -277,14 +294,11 @@ function anexarComprovante(id) {
 }
 
 function coletarFiltrosPagar(periodo) {
-  const statusField = document.getElementById('filtroStatusPagar');
-  const fornecedorField = document.getElementById('filtroFornecedorPagar');
-
   return {
+    fornecedor: document.getElementById('filtroFornecedorPagar').value.trim(),
+    status: document.getElementById('filtroStatusPagar').value,
     dataInicio: periodo.dataInicio,
-    dataFim: periodo.dataFim,
-    status: statusField ? statusField.value : 'todos',
-    fornecedor: fornecedorField ? fornecedorField.value : ''
+    dataFim: periodo.dataFim
   };
 }
 

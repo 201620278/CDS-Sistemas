@@ -560,54 +560,67 @@ router.get('/ultimas-movimentacoes', (req, res) => {
 
 function buildReceberQueryFilters(query) {
   const { dataInicio, dataFim, status, cliente, documento } = query;
+
   let sql = `
     SELECT
-      id,
-      descricao,
-      valor,
-      data_movimento as dataEmissao,
-      vencimento as dataVencimento,
-      pessoa_nome as cliente,
-      status,
-      observacao,
-      documento,
-      numero_parcela,
-      total_parcelas,
-      origem
-    FROM financeiro
-    WHERE tipo = 'receita'
+      f.id,
+      f.descricao,
+      f.valor,
+      f.data_movimento as dataEmissao,
+      f.vencimento as dataVencimento,
+      COALESCE(f.pessoa_nome, c.nome) as cliente,
+      f.status,
+      f.observacao,
+      f.documento,
+      f.numero_parcela,
+      f.total_parcelas,
+      f.origem
+    FROM financeiro f
+    LEFT JOIN clientes c
+      ON (
+        (f.pessoa_nome IS NOT NULL AND TRIM(f.pessoa_nome) <> '' AND c.nome = f.pessoa_nome)
+        OR
+        (f.documento IS NOT NULL AND c.cpf = f.documento)
+      )
+    WHERE f.tipo = 'receita'
   `;
+
   const params = [];
 
   if (dataInicio && dataFim) {
-    sql += ' AND COALESCE(vencimento, data_movimento) BETWEEN ? AND ?';
+    sql += ' AND COALESCE(f.vencimento, f.data_movimento) BETWEEN ? AND ?';
     params.push(dataInicio, dataFim);
   }
 
   if (status && status !== 'todas') {
     if (status === 'vencidas') {
-      sql += " AND status NOT IN ('recebido','pago') AND COALESCE(vencimento, data_movimento) < date('now')";
+      sql += " AND f.status NOT IN ('recebido','pago') AND COALESCE(f.vencimento, f.data_movimento) < date('now')";
     } else if (status === 'a_vencer') {
-      sql += " AND status NOT IN ('recebido','pago') AND COALESCE(vencimento, data_movimento) >= date('now')";
+      sql += " AND f.status NOT IN ('recebido','pago') AND COALESCE(f.vencimento, f.data_movimento) >= date('now')";
     } else if (status === 'recebidas') {
-      sql += " AND status IN ('recebido','pago')";
+      sql += " AND f.status IN ('recebido','pago')";
     } else {
-      sql += ' AND status = ?';
+      sql += ' AND f.status = ?';
       params.push(status);
     }
   }
 
   if (cliente) {
-    sql += ' AND pessoa_nome = ?';
-    params.push(cliente);
+    sql += `
+      AND (
+        COALESCE(f.pessoa_nome, c.nome, '') LIKE ?
+        OR COALESCE(c.cpf, '') LIKE ?
+      )
+    `;
+    params.push(`%${cliente}%`, `%${cliente}%`);
   }
 
   if (documento) {
-    sql += ' AND documento LIKE ?';
+    sql += ' AND COALESCE(f.documento, "") LIKE ?';
     params.push(`%${documento}%`);
   }
 
-  sql += ' ORDER BY COALESCE(vencimento, data_movimento) DESC';
+  sql += ' ORDER BY COALESCE(f.vencimento, f.data_movimento) DESC';
 
   return { sql, params };
 }
@@ -734,59 +747,64 @@ function buildReceberQueryFilters(query) {
 }
 
 function buildPagarQueryFilters(query) {
-  const { dataInicio, dataFim, status, fornecedor, documento, categoria } = query;
+  const { dataInicio, dataFim, status, fornecedor } = query;
+
   let sql = `
     SELECT
-      id,
-      descricao,
-      valor,
-      data_movimento as dataEmissao,
-      vencimento as dataVencimento,
-      pessoa_nome as fornecedor,
-      categoria,
-      status,
-      observacao,
-      documento,
-      numero_parcela,
-      total_parcelas,
-      origem
-    FROM financeiro
-    WHERE tipo = 'despesa'
+      f.id,
+      f.descricao,
+      f.valor,
+      f.data_movimento AS dataEmissao,
+      f.vencimento AS dataVencimento,
+      COALESCE(f.pessoa_nome, forn.nome) AS fornecedor,
+      COALESCE(f.documento, '') AS documento,
+      f.status,
+      f.observacao,
+      f.categoria,
+      f.origem
+    FROM financeiro f
+    LEFT JOIN fornecedores forn
+      ON (
+        (f.pessoa_nome IS NOT NULL AND TRIM(f.pessoa_nome) <> '' AND forn.nome = f.pessoa_nome)
+      )
+    WHERE f.tipo = 'despesa'
   `;
+
   const params = [];
 
   if (dataInicio && dataFim) {
-    sql += ' AND COALESCE(vencimento, data_movimento) BETWEEN ? AND ?';
+    sql += ' AND COALESCE(f.vencimento, f.data_movimento) BETWEEN ? AND ?';
     params.push(dataInicio, dataFim);
   }
 
-  if (status && status !== 'todos') {
+  if (status && status !== 'todos' && status !== 'todas') {
     if (status === 'vencido') {
-      sql += " AND status NOT IN ('recebido','pago') AND COALESCE(vencimento, data_movimento) < date('now')";
+      sql += " AND f.status NOT IN ('pago','recebido') AND COALESCE(f.vencimento, f.data_movimento) < date('now')";
     } else if (status === 'a_vencer') {
-      sql += " AND status NOT IN ('recebido','pago') AND COALESCE(vencimento, data_movimento) >= date('now')";
+      sql += " AND f.status NOT IN ('pago','recebido') AND COALESCE(f.vencimento, f.data_movimento) >= date('now')";
+    } else if (status === 'pago') {
+      sql += " AND f.status IN ('pago','recebido')";
+    } else if (status === 'pendente') {
+      sql += " AND f.status = 'pendente' AND COALESCE(f.vencimento, f.data_movimento) >= date('now')";
     } else {
-      sql += ' AND status = ?';
+      sql += ' AND f.status = ?';
       params.push(status);
     }
   }
 
   if (fornecedor) {
-    sql += ' AND pessoa_nome = ?';
-    params.push(fornecedor);
+    sql += `
+      AND (
+        COALESCE(f.pessoa_nome, forn.nome, '') LIKE ?
+        OR COALESCE(f.documento, '') LIKE ?
+        OR COALESCE(forn.cpf_cnpj, '') LIKE ?
+      )
+    `;
+    params.push(`%${fornecedor}%`, `%${fornecedor}%`, `%${fornecedor}%`);
   }
 
-  if (categoria) {
-    sql += ' AND categoria = ?';
-    params.push(categoria);
-  }
+  sql += ' ORDER BY COALESCE(f.vencimento, f.data_movimento) DESC, f.id DESC';
 
-  if (documento) {
-    sql += ' AND documento LIKE ?';
-    params.push(`%${documento}%`);
-  }
-
-  sql += ' ORDER BY COALESCE(vencimento, data_movimento) DESC';
   return { sql, params };
 }
 
@@ -835,33 +853,44 @@ router.get('/contas-pagar', (req, res) => {
 
   db.all(sql, params, (err, rows) => {
     if (err) {
-      console.error('Erro na query contas pagar:', err);
-      res.status(500).json({ error: err.message });
-      return;
+      console.error('Erro ao carregar contas a pagar:', err);
+      return res.status(500).json({
+        success: false,
+        error: err.message
+      });
     }
 
     const hoje = moment().format('YYYY-MM-DD');
-    const contas = rows.map(row => {
-      let status = row.status;
-      if (!['recebido', 'pago'].includes(status) && row.vencimento && row.vencimento < hoje) {
-        status = 'vencido';
+
+    const contas = (rows || []).map(row => {
+      let statusFinal = row.status || 'pendente';
+
+      if (
+        !['pago', 'recebido'].includes(statusFinal) &&
+        row.dataVencimento &&
+        row.dataVencimento < hoje
+      ) {
+        statusFinal = 'vencido';
       }
+
       return {
         id: row.id,
-        descricao: row.descricao,
-        valor: parseNumber(row.valor),
-        dataEmissao: row.dataEmissao,
-        dataVencimento: row.dataVencimento,
-        fornecedor: row.fornecedor,
-        categoria: row.categoria,
-        status: status,
-        observacao: row.observacao
+        fornecedor: row.fornecedor || '-',
+        descricao: row.descricao || '',
+        documento: row.documento || '',
+        valor: Number(row.valor || 0),
+        dataEmissao: row.dataEmissao || null,
+        dataVencimento: row.dataVencimento || null,
+        status: statusFinal,
+        categoria: row.categoria || '',
+        observacao: row.observacao || '',
+        origem: row.origem || ''
       };
     });
 
-    res.json({
+    return res.json({
       success: true,
-      contas: contas
+      contas
     });
   });
 });

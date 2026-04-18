@@ -6,9 +6,12 @@ function renderContasReceber(periodo) {
     <div class="financeiro-filtros">
       <div class="financeiro-filtro-grupo">
         <label for="filtroClienteReceber">Cliente:</label>
-        <select id="filtroClienteReceber" class="form-control">
-          <option value="">Todos os clientes</option>
-        </select>
+        <input
+          type="text"
+          id="filtroClienteReceber"
+          class="form-control"
+          placeholder="Nome ou CPF do cliente"
+        />
       </div>
       <div class="financeiro-filtro-grupo">
         <label for="filtroStatusReceber">Status:</label>
@@ -79,36 +82,10 @@ function renderContasReceber(periodo) {
 }
 
 function configurarFiltrosReceber() {
-  // Carregar lista de clientes
-  carregarClientesReceber();
-
   // Configurar eventos de filtro
-  document.getElementById('filtroClienteReceber').addEventListener('change', () => filtrarReceber());
+  document.getElementById('filtroClienteReceber').addEventListener('input', () => filtrarReceber());
   document.getElementById('filtroStatusReceber').addEventListener('change', () => filtrarReceber());
   document.getElementById('filtroDocumentoReceber').addEventListener('input', () => filtrarReceber());
-}
-
-async function carregarClientesReceber() {
-  try {
-    const response = await fetch('/api/clientes', {
-      headers: {
-        'Authorization': 'Bearer ' + localStorage.getItem('token')
-      }
-    });
-    const dados = await response.json();
-
-    if (dados.success) {
-      const select = document.getElementById('filtroClienteReceber');
-      dados.clientes.forEach(cliente => {
-        const option = document.createElement('option');
-        option.value = cliente.id;
-        option.textContent = cliente.nome;
-        select.appendChild(option);
-      });
-    }
-  } catch (error) {
-    console.error('Erro ao carregar clientes:', error);
-  }
 }
 
 async function carregarContasReceber(filtros) {
@@ -169,9 +146,9 @@ function preencherTabelaContasReceber(contas) {
 
 function coletarFiltrosReceber(periodo) {
   return {
-    cliente: document.getElementById('filtroClienteReceber').value,
+    cliente: document.getElementById('filtroClienteReceber').value.trim(),
     status: document.getElementById('filtroStatusReceber').value,
-    documento: document.getElementById('filtroDocumentoReceber').value,
+    documento: document.getElementById('filtroDocumentoReceber').value.trim(),
     dataInicio: document.getElementById('filtroDataInicioReceber').value || periodo.dataInicio,
     dataFim: document.getElementById('filtroDataFimReceber').value || periodo.dataFim
   };

@@ -115,12 +115,12 @@ router.post('/', (req, res) => {
 
   const buscarNomeCliente = (callback) => {
     if (!cliente_id) {
-      callback(null, null);
+      callback(null, null, null);
       return;
     }
 
     db.get(
-      'SELECT nome FROM clientes WHERE id = ?',
+      'SELECT nome, cpf_cnpj FROM clientes WHERE id = ?',
       [cliente_id],
       (err, cliente) => {
         if (err) {
@@ -128,7 +128,7 @@ router.post('/', (req, res) => {
           return;
         }
 
-        callback(null, cliente ? cliente.nome : null);
+        callback(null, cliente ? cliente.nome : null, cliente ? cliente.cpf_cnpj : null);
       }
     );
   };
@@ -266,7 +266,7 @@ router.post('/', (req, res) => {
                     `, [vendaId, cliente_id, i, qtdParcelas, valorParcela, valorParcela, vencimento.format('YYYY-MM-DD')]);
                     vencimento = vencimento.add(1, 'months');
                   }
-                  buscarNomeCliente((clienteErr, clienteNome) => {
+                  buscarNomeCliente((clienteErr, clienteNome, clienteCpf) => {
                     if (clienteErr) {
                       db.run('ROLLBACK');
                       res.status(500).json({ error: clienteErr.message });
@@ -297,7 +297,7 @@ router.post('/', (req, res) => {
                         data_venda,
                         forma_pagamento,
                         vendaId,
-                        codigo,
+                        clienteCpf,
                         venc.format('YYYY-MM-DD'),
                         indice,
                         qtdParcelas,
@@ -398,7 +398,7 @@ router.post('/', (req, res) => {
                   }
                 };
 
-                buscarNomeCliente((clienteErr, clienteNome) => {
+                buscarNomeCliente((clienteErr, clienteNome, clienteCpf) => {
                   if (clienteErr) {
                     db.run('ROLLBACK');
                     res.status(500).json({ error: clienteErr.message });
@@ -418,7 +418,7 @@ router.post('/', (req, res) => {
                     forma_pagamento,
                     vendaId,
                     statusFinanceiro,
-                    codigo,
+                    clienteCpf,
                     data_venda,
                     vendaId,
                     clienteNome,
