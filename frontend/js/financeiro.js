@@ -151,6 +151,13 @@ function carregarAbaAtiva() {
         conteudo.innerHTML = '<div class="alert alert-warning">Contas a Receber não disponível</div>';
       }
       break;
+    case 'duplicata':
+      if (typeof renderDuplicataClientes === 'function') {
+        renderDuplicataClientes(obterPeriodoFinanceiro());
+      } else {
+        conteudo.innerHTML = '<div class="alert alert-warning">Dívidas por Cliente não disponível</div>';
+      }
+      break;
     case 'pagar':
       if (typeof renderContasPagar === 'function') {
         renderContasPagar(obterPeriodoFinanceiro());

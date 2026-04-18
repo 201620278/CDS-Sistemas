@@ -417,7 +417,106 @@
   }
 }
 
-@media (max-width: 480px) {
+/* Duplicata agrupada */
+.duplicata-header-panel {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: space-between;
+  align-items: flex-start;
+  gap: 16px;
+  margin-bottom: 18px;
+}
+
+.duplicata-actions-panel {
+  display: flex;
+  gap: 10px;
+  align-items: center;
+}
+
+.duplicata-resumo-cards {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(160px, 1fr));
+  gap: 12px;
+  margin-bottom: 18px;
+}
+
+.duplicata-resumo-card {
+  background: #f8f9fa;
+  border: 1px solid #e9ecef;
+  border-radius: 10px;
+  padding: 16px;
+  color: #495057;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.duplicata-resumo-card strong {
+  font-size: 0.9rem;
+  color: #6c757d;
+}
+
+.duplicata-venda-list {
+  display: grid;
+  gap: 16px;
+}
+
+.duplicata-venda-card {
+  border: 1px solid #e9ecef;
+  border-radius: 12px;
+  padding: 16px;
+  background: white;
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.04);
+}
+
+.duplicata-venda-header {
+  display: flex;
+  justify-content: space-between;
+  flex-wrap: wrap;
+  gap: 12px;
+  margin-bottom: 12px;
+}
+
+.duplicata-venda-status {
+  min-width: 120px;
+  text-align: right;
+}
+
+.duplicata-venda-summary {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(140px, 1fr));
+  gap: 12px;
+  margin-bottom: 12px;
+}
+
+.duplicata-venda-summary div {
+  background: #f1f3f5;
+  border-radius: 10px;
+  padding: 12px;
+  color: #2c3e50;
+  font-weight: 600;
+}
+
+.duplicata-venda-actions {
+  margin-bottom: 12px;
+}
+
+.duplicata-venda-detalhes {
+  border-top: 1px solid #e9ecef;
+  padding-top: 14px;
+}
+
+.duplicata-venda-section {
+  margin-bottom: 16px;
+}
+
+.duplicata-venda-section h5 {
+  margin-bottom: 10px;
+  font-size: 1rem;
+  color: #343a40;
+}
+
+@media (max-width: 768px) {
   .financeiro-page {
     padding: 10px;
   }

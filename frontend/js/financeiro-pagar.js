@@ -169,6 +169,17 @@ function novaDespesa() {
   alert('Funcionalidade de nova despesa em desenvolvimento');
 }
 
+let modalDetalhesPagamento = null;
+
+function inicializarModalDetalhesPagamento() {
+  if (!modalDetalhesPagamento) {
+    const modalElement = document.getElementById('modalDetalhesFinanceiro');
+    if (modalElement) {
+      modalDetalhesPagamento = new bootstrap.Modal(modalElement);
+    }
+  }
+}
+
 function editarPagamento(id) {
   // Implementar edição
   alert(`Editar pagamento ${id} - Em desenvolvimento`);
@@ -272,7 +283,57 @@ async function baixarPagamento(id) {
 }
 
 function abrirDetalhesPagar(id) {
-  alert(`Detalhes do pagamento ${id} - Em desenvolvimento`);
+  inicializarModalDetalhesPagamento();
+
+  const body = document.getElementById('modalDetalhesFinanceiroBody');
+  const title = document.getElementById('modalDetalhesFinanceiroLabel');
+  if (!body || !title) {
+    alert('Modal de detalhes não encontrado.');
+    return;
+  }
+
+  title.textContent = 'Detalhes da Conta a Pagar';
+  body.innerHTML = '<div class="text-center text-muted">Carregando detalhes...</div>';
+  if (modalDetalhesPagamento) {
+    modalDetalhesPagamento.show();
+  }
+
+  fetch(`/api/financeiro/${id}`, {
+    headers: {
+      'Authorization': 'Bearer ' + localStorage.getItem('token')
+    }
+  })
+    .then(response => response.json())
+    .then(dados => {
+      if (!dados || dados.error) {
+        throw new Error(dados.error || 'Falha ao carregar detalhes da conta a pagar.');
+      }
+
+      body.innerHTML = `
+        <div class="row g-3">
+          <div class="col-12 col-md-6"><strong>Fornecedor:</strong> ${dados.pessoa_nome || '-'}</div>
+          <div class="col-12 col-md-6"><strong>Documento:</strong> ${dados.documento || '-'}</div>
+          <div class="col-12 col-md-6"><strong>Valor:</strong> ${formatarMoeda(dados.valor)}</div>
+          <div class="col-12 col-md-6"><strong>Data Movimento:</strong> ${formatarData(dados.data_movimento)}</div>
+          <div class="col-12 col-md-6"><strong>Vencimento:</strong> ${dados.vencimento ? formatarData(dados.vencimento) : '-'}</div>
+          <div class="col-12 col-md-6"><strong>Status:</strong> ${formatarStatusBadge(dados.status)}</div>
+          <div class="col-12 col-md-6"><strong>Origem:</strong> ${dados.origem || 'manual'}</div>
+          <div class="col-12 col-md-6"><strong>Parcela:</strong> ${dados.numero_parcela || '-'} / ${dados.total_parcelas || '-'}</div>
+          <div class="col-12">
+            <strong>Descrição:</strong>
+            <p class="mb-1">${dados.descricao || '-'}</p>
+          </div>
+          <div class="col-12">
+            <strong>Observação:</strong>
+            <p class="mb-0">${dados.observacao || '-'}</p>
+          </div>
+        </div>
+      `;
+    })
+    .catch(error => {
+      console.error('Erro ao carregar detalhes da conta a pagar:', error);
+      body.innerHTML = `<div class="text-danger">Não foi possível carregar os detalhes. ${error.message || ''}</div>`;
+    });
 }
 
 function editarContaPagar(id) {

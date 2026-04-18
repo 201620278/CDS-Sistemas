@@ -580,7 +580,7 @@ function buildReceberQueryFilters(query) {
       ON (
         (f.pessoa_nome IS NOT NULL AND TRIM(f.pessoa_nome) <> '' AND c.nome = f.pessoa_nome)
         OR
-        (f.documento IS NOT NULL AND c.cpf = f.documento)
+        (f.documento IS NOT NULL AND c.cpf_cnpj = f.documento)
       )
     WHERE f.tipo = 'receita'
   `;
@@ -609,7 +609,7 @@ function buildReceberQueryFilters(query) {
     sql += `
       AND (
         COALESCE(f.pessoa_nome, c.nome, '') LIKE ?
-        OR COALESCE(c.cpf, '') LIKE ?
+        OR COALESCE(c.cpf_cnpj, '') LIKE ?
       )
     `;
     params.push(`%${cliente}%`, `%${cliente}%`);
@@ -699,52 +699,565 @@ router.get('/contas-receber', (req, res) => {
   });
 });
 
-function buildReceberQueryFilters(query) {
-  const { dataInicio, dataFim, status, cliente, documento } = query;
-  let sql = `
-    SELECT
-      id,
-      descricao,
-      valor,
-      data_movimento as dataEmissao,
-      vencimento as dataVencimento,
-      pessoa_nome as cliente,
-      status,
-      observacao
-    FROM financeiro
-    WHERE tipo = 'receita'
-  `;
-  const params = [];
+router.get('/receber/agrupado', async (req, res) => {
+  try {
+    const { cliente, status, dataInicio, dataFim } = req.query;
 
-  if (dataInicio && dataFim) {
-    sql += ' AND COALESCE(vencimento, data_movimento) BETWEEN ? AND ?';
-    params.push(dataInicio, dataFim);
-  }
+    let sql = `
+      SELECT
+        c.id as cliente_id,
+        c.nome as nome_cliente,
+        COALESCE(c.cpf_cnpj, '') as cpf,
+        COALESCE(c.telefone, '') as telefone,
+        COUNT(DISTINCT cr.venda_id) as quantidade_vendas,
+        COUNT(cr.id) as quantidade_titulos,
+        COALESCE(SUM(CASE WHEN cr.status IN ('aberto','parcial') THEN cr.valor_restante ELSE 0 END), 0) as total_divida,
+        COALESCE(SUM(CASE WHEN cr.status = 'recebido' THEN cr.valor_parcela ELSE 0 END), 0) as total_pago,
+        COALESCE(SUM(CASE WHEN cr.status IN ('aberto','parcial') AND date(cr.data_vencimento) < date('now') THEN 1 ELSE 0 END), 0) as vencidas,
+        COALESCE(SUM(CASE WHEN cr.status IN ('aberto','parcial') AND date(cr.data_vencimento) >= date('now') THEN 1 ELSE 0 END), 0) as a_vencer
+      FROM clientes c
+      JOIN contas_receber cr ON cr.cliente_id = c.id
+      WHERE cr.status IN ('aberto','parcial')
+    `;
 
-  if (status && status !== 'todas') {
-    if (status === 'vencidas') {
-      sql += " AND status NOT IN ('recebido','pago') AND COALESCE(vencimento, data_movimento) < date('now')";
-    } else if (status === 'a_vencer') {
-      sql += " AND status NOT IN ('recebido','pago') AND COALESCE(vencimento, data_movimento) >= date('now')";
-    } else {
-      sql += ' AND status = ?';
-      params.push(status);
+    const params = [];
+
+    if (cliente) {
+      sql += ` AND (c.nome LIKE ? OR c.cpf_cnpj LIKE ? OR c.telefone LIKE ?)`;
+      params.push(`%${cliente}%`, `%${cliente}%`, `%${cliente}%`);
     }
-  }
 
-  if (cliente) {
-    sql += ' AND pessoa_nome = ?';
-    params.push(cliente);
-  }
+    if (dataInicio && dataFim) {
+      sql += ' AND date(cr.data_vencimento) BETWEEN ? AND ?';
+      params.push(dataInicio, dataFim);
+    }
 
-  if (documento) {
-    sql += ' AND documento LIKE ?';
-    params.push(`%${documento}%`);
-  }
+    if (status && status !== 'todas') {
+      if (status === 'vencidas') {
+        sql += " AND date(cr.data_vencimento) < date('now')";
+      } else if (status === 'a_vencer') {
+        sql += " AND date(cr.data_vencimento) >= date('now')";
+      }
+    }
 
-  sql += ' ORDER BY COALESCE(vencimento, data_movimento) DESC';
-  return { sql, params };
-}
+    sql += ' GROUP BY c.id, c.nome, c.cpf_cnpj, c.telefone';
+    sql += ' ORDER BY c.nome ASC';
+
+    const rows = await dbAllAsync(sql, params);
+
+    const clientes = rows.map(row => ({
+      cliente_id: row.cliente_id,
+      nome_cliente: row.nome_cliente,
+      cpf: row.cpf,
+      telefone: row.telefone,
+      quantidade_vendas: parseNumber(row.quantidade_vendas),
+      quantidade_titulos: parseNumber(row.quantidade_titulos),
+      total_divida: parseNumber(row.total_divida),
+      total_pago: parseNumber(row.total_pago),
+      saldo_atual: parseNumber(row.total_divida),
+      vencidas: parseNumber(row.vencidas),
+      a_vencer: parseNumber(row.a_vencer)
+    }));
+
+    res.json({ success: true, clientes });
+  } catch (err) {
+    console.error('Erro ao listar dívida agrupada:', err);
+    res.status(500).json({ success: false, error: err.message });
+  }
+});
+
+router.get('/receber/agrupado/:clienteId', async (req, res) => {
+  try {
+    const { clienteId } = req.params;
+
+    const cliente = await dbGetAsync(`
+      SELECT
+        id,
+        nome,
+        cpf_cnpj AS cpf,
+        telefone,
+        endereco,
+        rua,
+        numero,
+        bairro,
+        cidade,
+        uf,
+        cep
+      FROM clientes
+      WHERE id = ?
+    `, [clienteId]);
+
+    if (!cliente) {
+      return res.status(404).json({ success: false, error: 'Cliente não encontrado' });
+    }
+
+    const endereco = cliente.endereco || [cliente.rua, cliente.numero, cliente.bairro, cliente.cidade, cliente.uf, cliente.cep]
+      .filter(Boolean)
+      .join(', ');
+
+    const contas = await dbAllAsync(`
+      SELECT
+        cr.id AS conta_receber_id,
+        cr.venda_id,
+        v.codigo AS numero_venda,
+        v.data_venda,
+        v.total AS valor_total,
+        cr.numero_parcela,
+        cr.total_parcelas,
+        cr.valor_parcela,
+        cr.valor_restante,
+        cr.data_vencimento,
+        cr.status
+      FROM contas_receber cr
+      JOIN vendas v ON v.id = cr.venda_id
+      WHERE cr.cliente_id = ? AND cr.status IN ('aberto', 'parcial')
+      ORDER BY v.data_venda ASC, cr.data_vencimento ASC
+    `, [clienteId]);
+
+    const vendaIds = [...new Set(contas.map(conta => conta.venda_id))];
+
+    let produtos = [];
+    if (vendaIds.length > 0) {
+      const placeholders = vendaIds.map(() => '?').join(',');
+      produtos = await dbAllAsync(`
+        SELECT
+          vi.venda_id,
+          vi.produto_id,
+          p.nome AS nome_produto,
+          vi.quantidade,
+          vi.preco_unitario,
+          vi.subtotal
+        FROM vendas_itens vi
+        LEFT JOIN produtos p ON p.id = vi.produto_id
+        WHERE vi.venda_id IN (${placeholders})
+      `, vendaIds);
+    }
+
+    const vendasMap = new Map();
+    contas.forEach(conta => {
+      if (!vendasMap.has(conta.venda_id)) {
+        vendasMap.set(conta.venda_id, {
+          venda_id: conta.venda_id,
+          numero_venda: conta.numero_venda,
+          data_venda: conta.data_venda,
+          valor_total: parseNumber(conta.valor_total),
+          valor_pago: 0,
+          saldo_aberto: 0,
+          data_vencimento: conta.data_vencimento,
+          status: conta.status,
+          parcelas: [],
+          produtos: []
+        });
+      }
+
+      const venda = vendasMap.get(conta.venda_id);
+      venda.parcelas.push({
+        conta_receber_id: conta.conta_receber_id,
+        parcela: `${conta.numero_parcela || '-'} / ${conta.total_parcelas || '-'}`,
+        valor_parcela: parseNumber(conta.valor_parcela),
+        valor_restante: parseNumber(conta.valor_restante),
+        vencimento: conta.data_vencimento,
+        status: conta.status
+      });
+
+      venda.saldo_aberto += parseNumber(conta.valor_restante);
+      venda.valor_pago += parseNumber(conta.valor_parcela) - parseNumber(conta.valor_restante);
+
+      if (!venda.data_vencimento || (conta.data_vencimento && conta.data_vencimento < venda.data_vencimento)) {
+        venda.data_vencimento = conta.data_vencimento;
+      }
+
+      if (conta.status === 'vencido') {
+        venda.status = 'vencido';
+      } else if (venda.status !== 'vencido' && conta.status === 'parcial') {
+        venda.status = 'parcial';
+      }
+    });
+
+    produtos.forEach(prod => {
+      const venda = vendasMap.get(prod.venda_id);
+      if (venda) {
+        venda.produtos.push({
+          produto_id: prod.produto_id,
+          nome_produto: prod.nome_produto,
+          quantidade: parseNumber(prod.quantidade),
+          preco_unitario: parseNumber(prod.preco_unitario),
+          subtotal: parseNumber(prod.subtotal)
+        });
+      }
+    });
+
+    const vendas = Array.from(vendasMap.values()).map(venda => ({
+      ...venda,
+      data_vencimento: venda.data_vencimento,
+      status: venda.status || 'aberto'
+    }));
+
+    const totalDivida = contas.reduce((sum, conta) => sum + parseNumber(conta.valor_parcela), 0);
+    const totalPago = contas.reduce((sum, conta) => sum + (parseNumber(conta.valor_parcela) - parseNumber(conta.valor_restante)), 0);
+    const saldoAtual = contas.reduce((sum, conta) => sum + parseNumber(conta.valor_restante), 0);
+    const quantidadeVendas = new Set(contas.map(conta => conta.venda_id)).size;
+    const quantidadeTitulos = contas.length;
+    const vencidas = contas.filter(conta => conta.status !== 'recebido' && conta.data_vencimento && conta.data_vencimento < moment().format('YYYY-MM-DD')).length;
+    const aVencer = contas.filter(conta => conta.status !== 'recebido' && conta.data_vencimento && conta.data_vencimento >= moment().format('YYYY-MM-DD')).length;
+
+    res.json({
+      success: true,
+      cliente: {
+        id: cliente.id,
+        nome: cliente.nome,
+        cpf: cliente.cpf,
+        telefone: cliente.telefone,
+        endereco: endereco
+      },
+      resumo: {
+        totalDivida: parseNumber(totalDivida),
+        totalPago: parseNumber(totalPago),
+        saldoAtual: parseNumber(saldoAtual),
+        quantidadeVendas,
+        quantidadeTitulos,
+        vencidas,
+        aVencer
+      },
+      vendas
+    });
+  } catch (err) {
+    console.error('Erro ao buscar duplicata agrupada:', err);
+    res.status(500).json({ success: false, error: err.message });
+  }
+});
+
+router.get('/receber/agrupado/:clienteId/extrato', async (req, res) => {
+  try {
+    const configuracoes = await dbAllAsync(`
+      SELECT chave, valor
+      FROM configuracoes
+      WHERE chave IN ('nome_empresa', 'cnpj', 'telefone', 'endereco')
+    `, []);
+
+    const empresa = {
+      nome: '',
+      cnpj: '',
+      telefone: '',
+      endereco: ''
+    };
+    configuracoes.forEach(conf => {
+      if (conf.chave === 'nome_empresa') empresa.nome = conf.valor;
+      if (conf.chave === 'cnpj') empresa.cnpj = conf.valor;
+      if (conf.chave === 'telefone') empresa.telefone = conf.valor;
+      if (conf.chave === 'endereco') empresa.endereco = conf.valor;
+    });
+
+    const clienteId = req.params.clienteId;
+
+    const cliente = await dbGetAsync(`
+      SELECT id, nome, cpf_cnpj AS cpf, telefone, endereco, rua, numero, bairro, cidade, uf, cep
+      FROM clientes
+      WHERE id = ?
+    `, [clienteId]);
+
+    if (!cliente) {
+      return res.status(404).json({ success: false, error: 'Cliente não encontrado' });
+    }
+
+    const endereco = cliente.endereco || [cliente.rua, cliente.numero, cliente.bairro, cliente.cidade, cliente.uf, cliente.cep]
+      .filter(Boolean)
+      .join(', ');
+
+    const contas = await dbAllAsync(`
+      SELECT
+        cr.id AS conta_receber_id,
+        cr.venda_id,
+        v.codigo AS numero_venda,
+        v.data_venda,
+        v.total AS valor_total,
+        cr.numero_parcela,
+        cr.total_parcelas,
+        cr.valor_parcela,
+        cr.valor_restante,
+        cr.data_vencimento,
+        cr.status
+      FROM contas_receber cr
+      JOIN vendas v ON v.id = cr.venda_id
+      WHERE cr.cliente_id = ?
+      ORDER BY v.data_venda ASC, cr.data_vencimento ASC
+    `, [clienteId]);
+
+    const vendaIds = [...new Set(contas.map(conta => conta.venda_id))];
+    let produtos = [];
+    if (vendaIds.length > 0) {
+      const placeholders = vendaIds.map(() => '?').join(',');
+      produtos = await dbAllAsync(`
+        SELECT
+          vi.venda_id,
+          vi.produto_id,
+          p.nome AS nome_produto,
+          vi.quantidade,
+          vi.preco_unitario,
+          vi.subtotal
+        FROM vendas_itens vi
+        LEFT JOIN produtos p ON p.id = vi.produto_id
+        WHERE vi.venda_id IN (${placeholders})
+      `, vendaIds);
+    }
+
+    const vendasMap = new Map();
+    contas.forEach(conta => {
+      if (!vendasMap.has(conta.venda_id)) {
+        vendasMap.set(conta.venda_id, {
+          venda_id: conta.venda_id,
+          numero_venda: conta.numero_venda,
+          data_venda: conta.data_venda,
+          valor_total: parseNumber(conta.valor_total),
+          valor_pago: 0,
+          saldo_aberto: 0,
+          data_vencimento: conta.data_vencimento,
+          status: conta.status,
+          parcelas: [],
+          produtos: []
+        });
+      }
+      const venda = vendasMap.get(conta.venda_id);
+      venda.parcelas.push({
+        conta_receber_id: conta.conta_receber_id,
+        parcela: `${conta.numero_parcela || '-'} / ${conta.total_parcelas || '-'}`,
+        valor_parcela: parseNumber(conta.valor_parcela),
+        valor_restante: parseNumber(conta.valor_restante),
+        vencimento: conta.data_vencimento,
+        status: conta.status
+      });
+      venda.saldo_aberto += parseNumber(conta.valor_restante);
+      venda.valor_pago += parseNumber(conta.valor_parcela) - parseNumber(conta.valor_restante);
+      if (conta.status === 'vencido') {
+        venda.status = 'vencido';
+      } else if (venda.status !== 'vencido' && conta.status === 'parcial') {
+        venda.status = 'parcial';
+      }
+      if (!venda.data_vencimento || (conta.data_vencimento && conta.data_vencimento < venda.data_vencimento)) {
+        venda.data_vencimento = conta.data_vencimento;
+      }
+    });
+
+    produtos.forEach(prod => {
+      const venda = vendasMap.get(prod.venda_id);
+      if (venda) {
+        venda.produtos.push({
+          produto_id: prod.produto_id,
+          nome_produto: prod.nome_produto,
+          quantidade: parseNumber(prod.quantidade),
+          preco_unitario: parseNumber(prod.preco_unitario),
+          subtotal: parseNumber(prod.subtotal)
+        });
+      }
+    });
+
+    const vendas = Array.from(vendasMap.values());
+    const totalDivida = contas.reduce((sum, conta) => sum + parseNumber(conta.valor_parcela), 0);
+    const totalPago = contas.reduce((sum, conta) => sum + (parseNumber(conta.valor_parcela) - parseNumber(conta.valor_restante)), 0);
+    const saldoAtual = contas.reduce((sum, conta) => sum + parseNumber(conta.valor_restante), 0);
+    const quantidadeVendas = new Set(contas.map(conta => conta.venda_id)).size;
+    const quantidadeTitulos = contas.length;
+    const vencidas = contas.filter(conta => conta.status !== 'recebido' && conta.data_vencimento && conta.data_vencimento < moment().format('YYYY-MM-DD')).length;
+    const aVencer = contas.filter(conta => conta.status !== 'recebido' && conta.data_vencimento && conta.data_vencimento >= moment().format('YYYY-MM-DD')).length;
+
+    res.json({
+      success: true,
+      empresa,
+      cliente: {
+        id: cliente.id,
+        nome: cliente.nome,
+        cpf: cliente.cpf,
+        telefone: cliente.telefone,
+        endereco: endereco
+      },
+      resumo: {
+        totalDivida: parseNumber(totalDivida),
+        totalPago: parseNumber(totalPago),
+        saldoAtual: parseNumber(saldoAtual),
+        quantidadeVendas,
+        quantidadeTitulos,
+        vencidas,
+        aVencer
+      },
+      vendas,
+      geradoEm: moment().format('YYYY-MM-DD HH:mm:ss')
+    });
+  } catch (err) {
+    console.error('Erro ao gerar extrato de duplicata:', err);
+    res.status(500).json({ success: false, error: err.message });
+  }
+});
+
+router.get('/receber/agrupado/:clienteId/pagamentos', async (req, res) => {
+  try {
+    const clienteId = req.params.clienteId;
+    const rows = await dbAllAsync(`
+      SELECT
+        crp.id,
+        crp.valor_pago,
+        crp.data_pagamento,
+        crp.forma_pagamento,
+        crp.observacao,
+        crp.created_at,
+        cr.conta_receber_id,
+        v.codigo as venda_codigo,
+        cr.numero_parcela,
+        cr.total_parcelas
+      FROM contas_receber_pagamentos crp
+      JOIN contas_receber cr ON cr.id = crp.conta_receber_id
+      JOIN vendas v ON v.id = cr.venda_id
+      WHERE crp.cliente_id = ?
+      ORDER BY crp.data_pagamento DESC, crp.created_at DESC
+    `, [clienteId]);
+
+    const pagamentos = rows.map(row => ({
+      id: row.id,
+      valor_pago: parseNumber(row.valor_pago),
+      data_pagamento: row.data_pagamento,
+      forma_pagamento: row.forma_pagamento,
+      observacao: row.observacao,
+      created_at: row.created_at,
+      conta_receber_id: row.conta_receber_id,
+      venda_codigo: row.venda_codigo,
+      parcela: `${row.numero_parcela}/${row.total_parcelas}`
+    }));
+
+    res.json({ success: true, pagamentos });
+  } catch (err) {
+    console.error('Erro ao buscar histórico de pagamentos:', err);
+    res.status(500).json({ success: false, error: err.message });
+  }
+});
+
+router.post('/receber/agrupado/:clienteId/pagamento-parcial', async (req, res) => {
+  try {
+    const clienteId = req.params.clienteId;
+    const { valor, data_pagamento, forma_pagamento, observacao } = req.body;
+    const valorPago = parseNumber(valor);
+
+    if (valorPago <= 0) {
+      return res.status(400).json({ success: false, error: 'Valor deve ser maior que zero' });
+    }
+    if (!data_pagamento) {
+      return res.status(400).json({ success: false, error: 'Data do pagamento é obrigatória' });
+    }
+
+    const cliente = await dbGetAsync('SELECT id FROM clientes WHERE id = ?', [clienteId]);
+    if (!cliente) {
+      return res.status(404).json({ success: false, error: 'Cliente não encontrado' });
+    }
+
+    const contas = await dbAllAsync(`
+      SELECT id, venda_id, valor_restante, data_vencimento
+      FROM contas_receber
+      WHERE cliente_id = ? AND status IN ('aberto','parcial')
+      ORDER BY data_vencimento ASC, id ASC
+    `, [clienteId]);
+
+    if (!contas.length) {
+      return res.status(400).json({ success: false, error: 'Cliente não possui contas em aberto' });
+    }
+
+    const totalAberto = contas.reduce((sum, conta) => sum + parseNumber(conta.valor_restante), 0);
+    if (valorPago > totalAberto) {
+      return res.status(400).json({
+        success: false,
+        error: `Valor informado (${valorPago.toFixed(2)}) é maior que o total em aberto (${totalAberto.toFixed(2)})`
+      });
+    }
+
+    await new Promise((resolve, reject) => {
+      db.serialize(() => {
+        db.run('BEGIN TRANSACTION');
+        let valorRestante = valorPago;
+        const pagamentosRealizados = [];
+
+        const processarConta = (index) => {
+          if (index >= contas.length || valorRestante <= 0) {
+            db.run('COMMIT', (err) => {
+              if (err) {
+                db.run('ROLLBACK');
+                reject(err);
+              } else {
+                resolve(pagamentosRealizados);
+              }
+            });
+            return;
+          }
+
+          const conta = contas[index];
+          const valorConta = parseNumber(conta.valor_restante);
+          const valorAbater = Math.min(valorConta, valorRestante);
+
+          if (valorAbater <= 0) {
+            processarConta(index + 1);
+            return;
+          }
+
+          db.run(`
+            INSERT INTO contas_receber_pagamentos (
+              conta_receber_id, cliente_id, valor_pago, data_pagamento, forma_pagamento, observacao
+            ) VALUES (?, ?, ?, ?, ?, ?)
+          `, [
+            conta.id,
+            clienteId,
+            valorAbater,
+            data_pagamento,
+            forma_pagamento || 'dinheiro',
+            observacao || `Pagamento parcial - Venda ${conta.venda_id}`
+          ], function(err) {
+            if (err) {
+              db.run('ROLLBACK');
+              reject(err);
+              return;
+            }
+
+            const novoSaldo = valorConta - valorAbater;
+            const novoStatus = novoSaldo <= 0 ? 'recebido' : 'parcial';
+            const updateDataPagamento = novoSaldo <= 0 ? data_pagamento : null;
+
+            db.run(`
+              UPDATE contas_receber
+              SET valor_restante = ?, status = ?, data_pagamento = ?
+              WHERE id = ?
+            `, [novoSaldo, novoStatus, updateDataPagamento, conta.id], (err) => {
+              if (err) {
+                db.run('ROLLBACK');
+                reject(err);
+                return;
+              }
+
+              pagamentosRealizados.push({
+                conta_receber_id: conta.id,
+                venda_id: conta.venda_id,
+                valor_pago: valorAbater,
+                saldo_restante: novoSaldo,
+                status: novoStatus
+              });
+
+              valorRestante -= valorAbater;
+              processarConta(index + 1);
+            });
+          });
+        };
+
+        processarConta(0);
+      });
+    }).then((pagamentosRealizados) => {
+      res.json({
+        success: true,
+        message: 'Pagamento parcial realizado com sucesso',
+        pagamentosRealizados
+      });
+    }).catch((err) => {
+      console.error('Erro no pagamento parcial:', err);
+      res.status(500).json({ success: false, error: err.message });
+    });
+  } catch (err) {
+    console.error('Erro ao processar pagamento parcial:', err);
+    res.status(500).json({ success: false, error: err.message });
+  }
+});
 
 function buildPagarQueryFilters(query) {
   const { dataInicio, dataFim, status, fornecedor } = query;
@@ -1098,78 +1611,6 @@ router.get('/relatorios/pagar', (req, res) => {
         dataInicio: req.query.dataInicio,
         dataFim: req.query.dataFim
       }
-    });
-  });
-});
-
-// Relatório de Inadimplência
-router.get('/relatorios/inadimplencia', (req, res) => {
-  const { dataInicio, dataFim } = req.query;
-
-  let sql = `
-    SELECT
-      id,
-      descricao,
-      valor,
-      vencimento,
-      data_movimento,
-      status,
-      pessoa_nome
-    FROM financeiro
-    WHERE tipo = 'receita'
-      AND status NOT IN ('recebido', 'pago')
-      AND vencimento IS NOT NULL
-  `;
-
-  const params = [];
-
-  if (dataInicio && dataFim) {
-    sql += ' AND date(vencimento) BETWEEN date(?) AND date(?)';
-    params.push(dataInicio, dataFim);
-  }
-
-  sql += ' ORDER BY date(vencimento) ASC';
-
-  db.all(sql, params, (err, rows) => {
-    if (err) {
-      console.error('Erro no relatório inadimplência:', err);
-      return res.status(500).json({ success: false, error: err.message });
-    }
-
-    const hoje = moment().startOf('day');
-
-    const contasAtraso = [];
-    let vencidas = 0;
-    let vencer7dias = 0;
-    let valorAtraso = 0;
-
-    for (const row of rows || []) {
-      const venc = moment(row.vencimento, 'YYYY-MM-DD');
-      const diff = hoje.diff(venc, 'days');
-
-      if (diff > 0) {
-        vencidas += 1;
-        valorAtraso += parseNumber(row.valor);
-
-        contasAtraso.push({
-          id: row.id,
-          cliente: row.pessoa_nome || '',
-          valor: parseNumber(row.valor),
-          diasAtraso: diff,
-          dataVencimento: row.vencimento
-        });
-      } else if (diff >= -7 && diff <= 0) {
-        vencer7dias += 1;
-      }
-    }
-
-    return res.json({
-      success: true,
-      vencidas,
-      vencer7dias,
-      valorAtraso,
-      contasAtraso,
-      periodo: { dataInicio, dataFim }
     });
   });
 });

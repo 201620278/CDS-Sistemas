@@ -285,6 +285,24 @@ function inicializarBanco() {
       else console.log('Tabela contas_receber criada/verificada');
     });
 
+    db.run(`
+      CREATE TABLE IF NOT EXISTS contas_receber_pagamentos (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        conta_receber_id INTEGER NOT NULL,
+        cliente_id INTEGER NOT NULL,
+        valor_pago DECIMAL(10,2) NOT NULL,
+        data_pagamento DATE NOT NULL,
+        forma_pagamento VARCHAR(50),
+        observacao TEXT,
+        created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+        FOREIGN KEY (conta_receber_id) REFERENCES contas_receber(id),
+        FOREIGN KEY (cliente_id) REFERENCES clientes(id)
+      )
+    `, (err) => {
+      if (err) console.error('Erro ao criar tabela contas_receber_pagamentos:', err);
+      else console.log('Tabela contas_receber_pagamentos criada/verificada');
+    });
+
     // Histórico de alteração de preços (compra/venda)
     db.run(`
       CREATE TABLE IF NOT EXISTS produtos_preco_historico (
