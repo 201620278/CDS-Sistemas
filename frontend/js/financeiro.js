@@ -1,70 +1,272 @@
-const FINANCEIRO_FORMAS_PAGAMENTO = [
-    { value: 'dinheiro', label: 'Dinheiro', icon: '💵' },
-    { value: 'pix', label: 'PIX', icon: '📱' },
-    { value: 'cartao_credito', label: 'Cartão Crédito', icon: '💳' },
-    { value: 'cartao_debito', label: 'Cartão Débito', icon: '💳' },
-    { value: 'boleto', label: 'Boleto', icon: '🧾' },
-    { value: 'transferencia', label: 'Transferência', icon: '🏦' },
-    { value: 'cheque', label: 'Cheque', icon: '📝' },
-    { value: 'crediario', label: 'Crediário', icon: '📒' },
-    { value: 'prazo', label: 'A Prazo', icon: '📆' }
-];
+// Módulo Financeiro Principal
+let abaAtiva = 'dashboard';
 
-const FINANCEIRO_STATUS = [
-    { value: '', label: 'Todos' },
-    { value: 'pendente', label: 'Pendentes' },
-    { value: 'pago', label: 'Pagos' },
-    { value: 'recebido', label: 'Recebidos' }
-];
-
-const FINANCEIRO_ORIGENS = [
-    { value: '', label: 'Todas' },
-    { value: 'manual', label: 'Manual' },
-    { value: 'compra', label: 'Compra' },
-    { value: 'venda', label: 'Venda' },
-    { value: 'cancelamento_venda', label: 'Cancelamento' }
-];
-
-function nomeFormaPagamento(forma) {
-    const item = FINANCEIRO_FORMAS_PAGAMENTO.find(f => f.value === forma);
-    return item ? `${item.icon} ${item.label}` : (forma || '-');
+function isFinanceiroPageLoaded() {
+  return document.getElementById('financeiroConteudo') !== null;
 }
 
-function badgeStatus(status) {
-    const mapa = {
-        pendente: 'warning',
-        vencido: 'danger',
-        pago: 'success',
-        recebido: 'success'
-    };
-    return `<span class="badge bg-${mapa[status] || 'secondary'}">${status || '-'}</span>`;
+function initFinanceiro() {
+  const pageRoot = document.querySelector('.financeiro-page');
+  if (!pageRoot || !isFinanceiroPageLoaded()) {
+    return;
+  }
+
+  if (pageRoot.dataset.financeiroInitialized === 'true') {
+    return;
+  }
+
+  pageRoot.dataset.financeiroInitialized = 'true';
+  abaAtiva = 'dashboard';
+
+  configurarFiltrosPeriodo();
+  configurarAbas();
+  selecionarAbaVisual(abaAtiva);
+  carregarAbaAtiva();
 }
 
-function buildSelectOptions(items, selected = '') {
-    return items.map(item => `<option value="${item.value}" ${selected === item.value ? 'selected' : ''}>${item.label}</option>`).join('');
+function configurarFiltrosPeriodo() {
+  const periodoSelect = document.getElementById('financeiroPeriodo');
+  const dataInicioInput = document.getElementById('financeiroDataInicio');
+  const dataFimInput = document.getElementById('financeiroDataFim');
+  const botaoAtualizar = document.getElementById('btnAtualizarFinanceiro');
+  const inicioWrapper = document.getElementById('financeiroPeriodoInicioWrapper');
+  const fimWrapper = document.getElementById('financeiroPeriodoFimWrapper');
+
+  if (!periodoSelect || !dataInicioInput || !dataFimInput || !botaoAtualizar || !inicioWrapper || !fimWrapper) {
+    return;
+  }
+
+  function atualizarPeriodosVisuais(periodo, dataInicio, dataFim) {
+    const valorInicio = dataInicio.toISOString().split('T')[0];
+    const valorFim = dataFim.toISOString().split('T')[0];
+
+    dataInicioInput.value = valorInicio;
+    dataFimInput.value = valorFim;
+    inicioWrapper.classList.toggle('d-none', periodo !== 'personalizado');
+    fimWrapper.classList.toggle('d-none', periodo !== 'personalizado');
+  }
+
+  periodoSelect.addEventListener('change', function() {
+    const periodo = this.value;
+    const hoje = new Date();
+    let dataInicio, dataFim;
+
+    switch (periodo) {
+      case 'hoje':
+        dataInicio = new Date(hoje);
+        dataFim = new Date(hoje);
+        break;
+      case '7dias':
+        dataInicio = new Date(hoje.getTime() - 6 * 24 * 60 * 60 * 1000);
+        dataFim = new Date(hoje);
+        break;
+      case 'mes-atual':
+        dataInicio = new Date(hoje.getFullYear(), hoje.getMonth(), 1);
+        dataFim = new Date(hoje);
+        break;
+      case 'personalizado':
+        if (!dataInicioInput.value) {
+          dataInicioInput.value = hoje.toISOString().split('T')[0];
+        }
+        if (!dataFimInput.value) {
+          dataFimInput.value = hoje.toISOString().split('T')[0];
+        }
+        inicioWrapper.classList.remove('d-none');
+        fimWrapper.classList.remove('d-none');
+        return;
+      default:
+        dataInicio = new Date(hoje.getFullYear(), hoje.getMonth(), 1);
+        dataFim = new Date(hoje);
+    }
+
+    atualizarPeriodosVisuais(periodo, dataInicio, dataFim);
+  });
+
+  periodoSelect.value = 'mes-atual';
+  periodoSelect.dispatchEvent(new Event('change'));
+
+  botaoAtualizar.addEventListener('click', function() {
+    carregarAbaAtiva();
+  });
 }
 
-function loadFinanceiro(filtros = {}) {
-    const hoje = new Date().toISOString().split('T')[0];
-    const inicioMes = new Date();
-    inicioMes.setDate(1);
-    const dataInicio = filtros.data_inicio || inicioMes.toISOString().split('T')[0];
-    const dataFim = filtros.data_fim || hoje;
+function configurarAbas() {
+  const abas = document.querySelectorAll('.financeiro-tab');
+  if (!abas || abas.length === 0) {
+    return;
+  }
 
-    const query = new URLSearchParams({ data_inicio: dataInicio, data_fim: dataFim });
-    if (filtros.tipo) query.append('tipo', filtros.tipo);
-    if (filtros.forma_pagamento) query.append('forma_pagamento', filtros.forma_pagamento);
-    if (filtros.status) query.append('status', filtros.status);
-    if (filtros.origem) query.append('origem', filtros.origem);
+  abas.forEach(aba => {
+    aba.addEventListener('click', function() {
+      const abaSelecionada = this.getAttribute('data-aba');
+      if (!abaSelecionada) {
+        return;
+      }
 
-    $.when(
-        $.ajax({ url: `${API_URL}/financeiro?${query.toString()}`, method: 'GET' }),
-        $.ajax({ url: `${API_URL}/financeiro/resumo?${query.toString()}`, method: 'GET' })
-    ).done(function(movResp, resumoResp) {
-        renderFinanceiro(movResp[0], resumoResp[0], { ...filtros, data_inicio: dataInicio, data_fim: dataFim });
-    }).fail(function() {
-        $('#page-content').html('<div class="alert alert-danger">Erro ao carregar o financeiro.</div>');
+      if (abaAtiva === abaSelecionada) {
+        return;
+      }
+
+      abas.forEach(a => a.classList.remove('active'));
+      this.classList.add('active');
+
+      abaAtiva = abaSelecionada;
+      carregarAbaAtiva();
     });
+  });
+}
+
+function selecionarAbaVisual(nomeAba) {
+  const abas = document.querySelectorAll('.financeiro-tab');
+  abas.forEach(aba => {
+    const abaNome = aba.getAttribute('data-aba');
+    if (abaNome === nomeAba) {
+      aba.classList.add('active');
+    } else {
+      aba.classList.remove('active');
+    }
+  });
+}
+
+function carregarAbaAtiva() {
+  const conteudo = document.getElementById('financeiroConteudo');
+  if (!conteudo) {
+    return;
+  }
+
+  conteudo.innerHTML = '';
+
+  switch (abaAtiva) {
+    case 'dashboard':
+      if (typeof renderDashboardFinanceiro === 'function') {
+        renderDashboardFinanceiro(obterPeriodoFinanceiro());
+      } else {
+        conteudo.innerHTML = '<div class="alert alert-warning">Dashboard não disponível</div>';
+      }
+      break;
+    case 'receber':
+      if (typeof renderContasReceber === 'function') {
+        renderContasReceber(obterPeriodoFinanceiro());
+      } else {
+        conteudo.innerHTML = '<div class="alert alert-warning">Contas a Receber não disponível</div>';
+      }
+      break;
+    case 'pagar':
+      if (typeof renderContasPagar === 'function') {
+        renderContasPagar(obterPeriodoFinanceiro());
+      } else {
+        conteudo.innerHTML = '<div class="alert alert-warning">Contas a Pagar não disponível</div>';
+      }
+      break;
+    case 'historico':
+      if (typeof renderHistoricoFinanceiro === 'function') {
+        renderHistoricoFinanceiro(obterPeriodoFinanceiro());
+      } else {
+        conteudo.innerHTML = '<div class="alert alert-warning">Histórico não disponível</div>';
+      }
+      break;
+    case 'relatorios':
+      if (typeof renderRelatoriosFinanceiros === 'function') {
+        renderRelatoriosFinanceiros(obterPeriodoFinanceiro());
+      } else {
+        conteudo.innerHTML = '<div class="alert alert-warning">Relatórios não disponível</div>';
+      }
+      break;
+    default:
+      conteudo.innerHTML = '<div class="alert alert-warning">Aba inválida.</div>';
+  }
+}
+
+function obterPeriodoFinanceiro() {
+  const periodoSelect = document.getElementById('financeiroPeriodo');
+  const dataInicioInput = document.getElementById('financeiroDataInicio');
+  const dataFimInput = document.getElementById('financeiroDataFim');
+  const hoje = new Date();
+
+  if (!periodoSelect || !dataInicioInput || !dataFimInput) {
+    return {
+      tipo: 'mes-atual',
+      dataInicio: hoje.toISOString().split('T')[0],
+      dataFim: hoje.toISOString().split('T')[0]
+    };
+  }
+
+  const periodo = periodoSelect.value;
+  let dataInicio, dataFim;
+
+  switch (periodo) {
+    case 'hoje':
+      dataInicio = new Date(hoje);
+      dataFim = new Date(hoje);
+      break;
+    case '7dias':
+      dataInicio = new Date(hoje.getTime() - 6 * 24 * 60 * 60 * 1000);
+      dataFim = new Date(hoje);
+      break;
+    case 'mes-atual':
+      dataInicio = new Date(hoje.getFullYear(), hoje.getMonth(), 1);
+      dataFim = new Date(hoje);
+      break;
+    case 'personalizado': {
+      const inicioRaw = dataInicioInput.value;
+      const fimRaw = dataFimInput.value;
+      const inicioDate = inicioRaw ? new Date(inicioRaw) : null;
+      const fimDate = fimRaw ? new Date(fimRaw) : null;
+
+      if (inicioDate instanceof Date && !Number.isNaN(inicioDate.getTime())) {
+        dataInicio = inicioDate;
+      } else {
+        dataInicio = new Date(hoje.getFullYear(), hoje.getMonth(), 1);
+      }
+
+      if (fimDate instanceof Date && !Number.isNaN(fimDate.getTime())) {
+        dataFim = fimDate;
+      } else {
+        dataFim = new Date(hoje);
+      }
+
+      if (dataFim < dataInicio) {
+        dataFim = new Date(dataInicio);
+      }
+      break;
+    }
+    default:
+      dataInicio = new Date(hoje.getFullYear(), hoje.getMonth(), 1);
+      dataFim = hoje;
+  }
+
+  if (!(dataInicio instanceof Date) || Number.isNaN(dataInicio.getTime())) {
+    dataInicio = new Date(hoje.getFullYear(), hoje.getMonth(), 1);
+  }
+  if (!(dataFim instanceof Date) || Number.isNaN(dataFim.getTime())) {
+    dataFim = new Date(hoje);
+  }
+
+  return {
+    tipo: periodo,
+    dataInicio: dataInicio.toISOString().split('T')[0],
+    dataFim: dataFim.toISOString().split('T')[0]
+  };
+}
+
+function abrirAbaFinanceiro(nomeAba) {
+  abaAtiva = nomeAba;
+  selecionarAbaVisual(nomeAba);
+  carregarAbaAtiva();
+}
+
+function atualizarFinanceiroAtual() {
+  carregarAbaAtiva();
+}
+
+if (document.readyState === 'loading') {
+  document.addEventListener('DOMContentLoaded', () => {
+    if (isFinanceiroPageLoaded()) {
+      initFinanceiro();
+    }
+  });
+} else if (isFinanceiroPageLoaded()) {
+  initFinanceiro();
 }
 
 function renderFinanceiro(movimentacoes, resumo, filtros) {

@@ -1,0 +1,107 @@
+function renderHistoricoFinanceiro(periodo) {
+  const container = document.getElementById('financeiroConteudo');
+
+  container.innerHTML = `
+    <div class="financeiro-filtros">
+      <input type="text" id="filtroDescricao" placeholder="Descrição ou documento">
+      
+      <select id="filtroTipo">
+        <option value="">Todos</option>
+        <option value="receita">Receita</option>
+        <option value="despesa">Despesa</option>
+      </select>
+
+      <select id="filtroStatus">
+        <option value="">Todos</option>
+        <option value="pendente">Pendente</option>
+        <option value="recebido">Recebido</option>
+        <option value="pago">Pago</option>
+        <option value="vencido">Vencido</option>
+      </select>
+
+      <button onclick="carregarHistoricoFinanceiro()">Filtrar</button>
+    </div>
+
+    <div class="financeiro-tabela">
+      <table>
+        <thead>
+          <tr>
+            <th>Data</th>
+            <th>Tipo</th>
+            <th>Descrição</th>
+            <th>Documento</th>
+            <th>Pessoa</th>
+            <th>Status</th>
+            <th>Forma</th>
+            <th>Valor</th>
+          </tr>
+        </thead>
+        <tbody id="tabelaHistoricoFinanceiro"></tbody>
+      </table>
+    </div>
+  `;
+
+  carregarHistoricoFinanceiro(periodo);
+}
+
+async function carregarHistoricoFinanceiro(periodo) {
+  const filtroDescricao = document.getElementById('filtroDescricao')?.value || '';
+  const filtroTipo = document.getElementById('filtroTipo')?.value || '';
+  const filtroStatus = document.getElementById('filtroStatus')?.value || '';
+
+  let url = '/api/financeiro';
+
+  const params = new URLSearchParams();
+
+  if (periodo?.dataInicio) params.append('dataInicio', periodo.dataInicio);
+  if (periodo?.dataFim) params.append('dataFim', periodo.dataFim);
+  if (filtroDescricao) params.append('busca', filtroDescricao);
+  if (filtroTipo) params.append('tipo', filtroTipo);
+  if (filtroStatus) params.append('status', filtroStatus);
+
+  if ([...params].length) url += '?' + params.toString();
+
+  const res = await fetch(url);
+  const data = await res.json();
+
+  preencherTabelaHistorico(data);
+}
+
+function preencherTabelaHistorico(lista) {
+  const tbody = document.getElementById('tabelaHistoricoFinanceiro');
+
+  if (!lista || !lista.length) {
+    tbody.innerHTML = `
+      <tr>
+        <td colspan="8" style="text-align:center">Nenhum lançamento encontrado</td>
+      </tr>
+    `;
+    return;
+  }
+
+  tbody.innerHTML = lista.map(item => `
+    <tr>
+      <td>${formatarData(item.data_movimento || item.vencimento)}</td>
+      <td>${item.tipo}</td>
+      <td>${item.descricao || '-'}</td>
+      <td>${item.documento || '-'}</td>
+      <td>${item.pessoa_nome || '-'}</td>
+      <td><span class="status-${item.status}">${item.status}</span></td>
+      <td>${item.forma_pagamento || '-'}</td>
+      <td>${formatarMoeda(item.valor)}</td>
+    </tr>
+  `).join('');
+}
+
+function formatarMoeda(valor) {
+  return Number(valor || 0).toLocaleString('pt-BR', {
+    style: 'currency',
+    currency: 'BRL'
+  });
+}
+
+function formatarData(data) {
+  if (!data) return '-';
+  const [ano, mes, dia] = data.split('-');
+  return `${dia}/${mes}/${ano}`;
+}

@@ -33,9 +33,49 @@ $(document).ready(function() {
     loadPage(currentPage);
 });
 
+function isScriptAlreadyLoaded(src) {
+    return Array.from(document.scripts).some(script => {
+        return script.src && script.src.endsWith(src);
+    });
+}
+
 function carregarPaginaHtml(url, callback) {
     $.get(url, function(html) {
-        $('#page-content').html(html);
+        const $page = $('#page-content');
+        const nodes = $.parseHTML(html, document, true);
+
+        $page.empty();
+
+        if (!nodes) {
+            if (typeof callback === 'function') callback();
+            return;
+        }
+
+        const inlineScripts = [];
+
+        nodes.forEach(node => {
+            if (node.nodeType === 1 && node.tagName.toLowerCase() === 'script') {
+                if (node.src) {
+                    const srcPath = node.getAttribute('src');
+                    if (!isScriptAlreadyLoaded(srcPath)) {
+                        const script = document.createElement('script');
+                        script.src = srcPath;
+                        document.body.appendChild(script);
+                    }
+                } else {
+                    inlineScripts.push(node.text || node.textContent || node.innerHTML || '');
+                }
+            } else {
+                $page.append(node);
+            }
+        });
+
+        inlineScripts.forEach(code => {
+            if (code.trim()) {
+                $.globalEval(code);
+            }
+        });
+
         if (typeof callback === 'function') callback();
     }).fail(function() {
         $('#page-content').html('<div class="alert alert-danger">Erro ao carregar a página solicitada.</div>');
@@ -64,7 +104,13 @@ function loadPage(page) {
         case 'vendas':
             return typeof loadVendas === 'function' ? loadVendas() : $('#page-content').html('<div class="alert alert-danger">Erro ao carregar histórico de vendas.</div>');
         case 'financeiro':
-            return typeof loadFinanceiro === 'function' ? loadFinanceiro() : $('#page-content').html('<div class="alert alert-danger">Erro ao carregar financeiro.</div>');
+            return carregarPaginaHtml('financeiro.html', function() {
+                if (typeof initFinanceiro === 'function') {
+                    initFinanceiro();
+                } else {
+                    $('#page-content').html('<div class="alert alert-danger">Erro ao carregar financeiro.</div>');
+                }
+            });
         case 'configuracoes':
             return typeof loadConfiguracoes === 'function' ? loadConfiguracoes() : $('#page-content').html('<div class="alert alert-danger">Erro ao carregar configurações.</div>');
         case 'fiscal':

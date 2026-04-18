@@ -1,0 +1,49 @@
+<div class="financeiro-page">
+  <div class="financeiro-header">
+    <h3 align="left">Financeiro</h3>
+  </div>
+
+  <div class="financeiro-header-actions">
+    <div class="row g-2 align-items-end">
+      <div class="col-md-2">
+        <label class="form-label">Período</label>
+        <select id="financeiroPeriodo" class="form-select">
+          <option value="hoje">Hoje</option>
+          <option value="7dias">Últimos 7 Dias</option>
+          <option value="mes-atual">Mês Atual</option>
+          <option value="personalizado">Personalizado</option>
+        </select>
+      </div>
+      <div class="col-md-2 d-none" id="financeiroPeriodoInicioWrapper">
+        <label class="form-label">Data Início</label>
+        <input type="date" id="financeiroDataInicio" class="form-control">
+      </div>
+      <div class="col-md-2 d-none" id="financeiroPeriodoFimWrapper">
+        <label class="form-label">Data Fim</label>
+        <input type="date" id="financeiroDataFim" class="form-control">
+      </div>
+      <div class="col-md-2">
+        <button type="button" id="btnAtualizarFinanceiro" class="btn btn-primary w-100">
+          <i class="fas fa-sync-alt"></i> Atualizar
+        </button>
+      </div>
+    </div>
+  </div>
+
+  <div class="financeiro-tabs">
+    <button class="financeiro-tab active" data-aba="dashboard">Dashboard</button>
+    <button class="financeiro-tab" data-aba="receber">Contas a Receber</button>
+    <button class="financeiro-tab" data-aba="pagar">Contas a Pagar</button>
+    <button class="financeiro-tab" data-aba="historico">Histórico</button>
+    <button class="financeiro-tab" data-aba="relatorios">Relatórios</button>
+  </div>
+
+  <div id="financeiroConteudo" class="financeiro-conteudo">
+    <!-- Conteúdo das abas será carregado aqui -->
+  </div>
+</div>
+
+<script src="js/financeiro-historico.js"></script>
+
+<!-- Conteúdo do Financeiro carregado dinamicamente.
+    Os scripts e estilos do módulo já são importados em index.html. -->
