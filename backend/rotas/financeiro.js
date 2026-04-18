@@ -948,54 +948,77 @@ router.get('/relatorios/receber', (req, res) => {
 
   let sql = `
     SELECT
-      f.*,
-      c.nome as cliente_nome
-    FROM financeiro f
-    LEFT JOIN clientes c ON f.pessoa_id = c.id
-    WHERE f.tipo = 'receita'
+      id,
+      descricao,
+      documento,
+      valor,
+      data_movimento,
+      vencimento,
+      status,
+      origem,
+      pessoa_nome
+    FROM financeiro
+    WHERE tipo = 'receita'
   `;
 
   const params = [];
 
   if (dataInicio && dataFim) {
-    sql += ' AND f.data_movimento BETWEEN ? AND ?';
+    sql += ' AND date(COALESCE(vencimento, data_movimento)) BETWEEN date(?) AND date(?)';
     params.push(dataInicio, dataFim);
   }
 
   if (status && status !== 'todas') {
-    sql += ' AND f.status = ?';
-    params.push(status);
+    if (status === 'vencido') {
+      sql += " AND status NOT IN ('recebido','pago') AND date(COALESCE(vencimento, data_movimento)) < date('now')";
+    } else {
+      sql += ' AND status = ?';
+      params.push(status);
+    }
   }
 
-  if (cliente) {
-    sql += ' AND f.pessoa_nome = ?';
-    params.push(cliente);
+  if (cliente && cliente.trim() !== '') {
+    sql += ' AND COALESCE(pessoa_nome, "") LIKE ?';
+    params.push(`%${cliente.trim()}%`);
   }
 
-  sql += ' ORDER BY f.data_movimento DESC';
+  sql += ' ORDER BY date(COALESCE(vencimento, data_movimento)) DESC, id DESC';
 
   db.all(sql, params, (err, rows) => {
     if (err) {
       console.error('Erro no relatório receber:', err);
-      res.status(500).json({ error: err.message });
-      return;
+      return res.status(500).json({ success: false, error: err.message });
     }
 
-    const contas = rows.map(row => ({
-      id: row.id,
-      cliente: row.cliente_nome || row.pessoa_nome,
-      descricao: row.descricao,
-      documento: row.documento,
-      valor: parseNumber(row.valor),
-      dataEmissao: row.data_movimento,
-      dataVencimento: row.vencimento,
-      status: row.status,
-      origem: row.origem
-    }));
+    const hoje = moment().format('YYYY-MM-DD');
 
-    res.json({
+    const contas = (rows || []).map(row => {
+      let statusFinal = row.status || 'pendente';
+
+      if (
+        !['recebido', 'pago'].includes(statusFinal) &&
+        row.vencimento &&
+        row.vencimento < hoje
+      ) {
+        statusFinal = 'vencido';
+      }
+
+      return {
+        id: row.id,
+        cliente: row.pessoa_nome || '',
+        descricao: row.descricao || '',
+        documento: row.documento || '',
+        valor: parseNumber(row.valor),
+        dataEmissao: row.data_movimento || null,
+        dataVencimento: row.vencimento || null,
+        status: statusFinal,
+        origem: row.origem || ''
+      };
+    });
+
+    return res.json({
       success: true,
-      contas: contas,
+      contas,
       periodo: { dataInicio, dataFim }
     });
   });
@@ -1003,60 +1026,120 @@ router.get('/relatorios/receber', (req, res) => {
 
 // Relatório de Contas a Pagar
 router.get('/relatorios/pagar', (req, res) => {
-  const { dataInicio, dataFim, status, fornecedor } = req.query;
+  const { sql, params } = buildPagarQueryFilters(req.query);
+
+  db.all(sql, params, (err, rows) => {
+    if (err) {
+      console.error('Erro no relatório pagar:', err);
+      return res.status(500).json({ success: false, error: err.message });
+    }
+
+    const hoje = moment().format('YYYY-MM-DD');
+
+    const contas = (rows || []).map(row => {
+      let statusFinal = row.status || 'pendente';
+
+      if (
+        !['recebido', 'pago'].includes(statusFinal) &&
+        row.dataVencimento &&
+        row.dataVencimento < hoje
+      ) {
+        statusFinal = 'vencido';
+      }
+
+      return {
+        id: row.id,
+        fornecedor: row.fornecedor || row.pessoa_nome || '',
+        descricao: row.descricao || '',
+        documento: row.documento || '',
+        valor: parseNumber(row.valor),
+        dataEmissao: row.dataEmissao || null,
+        dataVencimento: row.dataVencimento || null,
+        status: statusFinal,
+        categoria: row.categoria || '',
+        observacao: row.observacao || '',
+        origem: row.origem || ''
+      };
+    });
+
+    return res.json({
+      success: true,
+      contas,
+      periodo: {
+        dataInicio: req.query.dataInicio,
+        dataFim: req.query.dataFim
+      }
+    });
+  });
+});
+
+// Relatório de Inadimplência
+router.get('/relatorios/inadimplencia', (req, res) => {
+  const { dataInicio, dataFim } = req.query;
 
   let sql = `
     SELECT
-      f.*,
-      fo.nome as fornecedor_nome
-    FROM financeiro f
-    LEFT JOIN fornecedores fo ON f.pessoa_id = fo.id
-    WHERE f.tipo = 'despesa'
+      id,
+      descricao,
+      valor,
+      vencimento,
+      data_movimento,
+      status,
+      pessoa_nome
+    FROM financeiro
+    WHERE tipo = 'receita'
+      AND status NOT IN ('recebido', 'pago')
+      AND vencimento IS NOT NULL
   `;
 
   const params = [];
 
   if (dataInicio && dataFim) {
-    sql += ' AND f.data_movimento BETWEEN ? AND ?';
+    sql += ' AND date(vencimento) BETWEEN date(?) AND date(?)';
     params.push(dataInicio, dataFim);
   }
 
-  if (status && status !== 'todas') {
-    sql += ' AND f.status = ?';
-    params.push(status);
-  }
-
-  if (fornecedor) {
-    sql += ' AND f.pessoa_nome = ?';
-    params.push(fornecedor);
-  }
-
-  sql += ' ORDER BY f.data_movimento DESC';
+  sql += ' ORDER BY date(vencimento) ASC';
 
   db.all(sql, params, (err, rows) => {
     if (err) {
-      console.error('Erro no relatório pagar:', err);
-      res.status(500).json({ error: err.message });
-      return;
+      console.error('Erro no relatório inadimplência:', err);
+      return res.status(500).json({ success: false, error: err.message });
     }
 
-    const contas = rows.map(row => ({
-      id: row.id,
-      fornecedor: row.fornecedor_nome || row.pessoa_nome,
-      descricao: row.descricao,
-      documento: row.documento,
-      categoria: row.categoria,
-      valor: parseNumber(row.valor),
-      dataEmissao: row.data_movimento,
-      dataVencimento: row.vencimento,
-      status: row.status,
-      forma_pagamento: row.forma_pagamento,
-      origem: row.origem
-    }));
+    const hoje = moment().startOf('day');
 
-    res.json({
+    const contasAtraso = [];
+    let vencidas = 0;
+    let vencer7dias = 0;
+    let valorAtraso = 0;
+
+    for (const row of rows || []) {
+      const venc = moment(row.vencimento, 'YYYY-MM-DD');
+      const diff = hoje.diff(venc, 'days');
+
+      if (diff > 0) {
+        vencidas += 1;
+        valorAtraso += parseNumber(row.valor);
+
+        contasAtraso.push({
+          id: row.id,
+          cliente: row.pessoa_nome || '',
+          valor: parseNumber(row.valor),
+          diasAtraso: diff,
+          dataVencimento: row.vencimento
+        });
+      } else if (diff >= -7 && diff <= 0) {
+        vencer7dias += 1;
+      }
+    }
+
+    return res.json({
       success: true,
-      contas: contas,
+      vencidas,
+      vencer7dias,
+      valorAtraso,
+      contasAtraso,
       periodo: { dataInicio, dataFim }
     });
   });

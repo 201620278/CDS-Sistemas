@@ -328,16 +328,28 @@ function carregarRelatorioSelecionado() {
 
 async function gerarRelatorioResumo(filtros) {
   try {
-    const response = await fetch(`/api/financeiro/relatorios/resumo?dataInicio=${filtros.dataInicio}&dataFim=${filtros.dataFim}`, {
-      headers: {
-        'Accept': 'application/json',
-        'Authorization': 'Bearer ' + localStorage.getItem('token')
+    const response = await fetch(
+      `/api/financeiro/relatorios/resumo?dataInicio=${filtros.dataInicio}&dataFim=${filtros.dataFim}`,
+      {
+        headers: {
+          'Accept': 'application/json',
+          'Authorization': 'Bearer ' + localStorage.getItem('token')
+        }
       }
-    });
+    );
+
+    if (response.status === 401) {
+      throw new Error('Sessão expirada. Faça login novamente.');
+    }
+
     const dados = await response.json();
-    
+
+    if (!response.ok) {
+      throw new Error(dados.error || 'Erro ao gerar relatório resumo');
+    }
+
     if (dados.success) {
-      renderizarRelatorio('resumo', 'Resumo Financeiro', dados, filtros);
+      renderizarRelatorio('resumo', 'Resumo Financeiro', dados.resumo, filtros);
     }
   } catch (error) {
     console.error('Erro ao gerar relatório resumo:', error);
@@ -346,14 +358,26 @@ async function gerarRelatorioResumo(filtros) {
 
 async function gerarRelatorioReceber(filtros) {
   try {
-    const response = await fetch(`/api/financeiro/relatorios/receber?dataInicio=${filtros.dataInicio}&dataFim=${filtros.dataFim}&status=${filtros.status}&cliente=${filtros.cliente}`, {
-      headers: {
-        'Accept': 'application/json',
-        'Authorization': 'Bearer ' + localStorage.getItem('token')
+    const response = await fetch(
+      `/api/financeiro/relatorios/receber?dataInicio=${filtros.dataInicio}&dataFim=${filtros.dataFim}&status=${filtros.status}&cliente=${encodeURIComponent(filtros.cliente || '')}`,
+      {
+        headers: {
+          'Accept': 'application/json',
+          'Authorization': 'Bearer ' + localStorage.getItem('token')
+        }
       }
-    });
+    );
+
+    if (response.status === 401) {
+      throw new Error('Sessão expirada. Faça login novamente.');
+    }
+
     const dados = await response.json();
-    
+
+    if (!response.ok) {
+      throw new Error(dados.error || 'Erro ao gerar relatório receber');
+    }
+
     if (dados.success) {
       renderizarRelatorio('receber', 'Contas a Receber', dados, filtros);
     }
@@ -364,14 +388,26 @@ async function gerarRelatorioReceber(filtros) {
 
 async function gerarRelatorioPagar(filtros) {
   try {
-    const response = await fetch(`/api/financeiro/relatorios/pagar?dataInicio=${filtros.dataInicio}&dataFim=${filtros.dataFim}&status=${filtros.status}&fornecedor=${filtros.fornecedor}`, {
-      headers: {
-        'Accept': 'application/json',
-        'Authorization': 'Bearer ' + localStorage.getItem('token')
+    const response = await fetch(
+      `/api/financeiro/relatorios/pagar?dataInicio=${filtros.dataInicio}&dataFim=${filtros.dataFim}&status=${filtros.status}&fornecedor=${encodeURIComponent(filtros.fornecedor || '')}`,
+      {
+        headers: {
+          'Accept': 'application/json',
+          'Authorization': 'Bearer ' + localStorage.getItem('token')
+        }
       }
-    });
+    );
+
+    if (response.status === 401) {
+      throw new Error('Sessão expirada. Faça login novamente.');
+    }
+
     const dados = await response.json();
-    
+
+    if (!response.ok) {
+      throw new Error(dados.error || 'Erro ao gerar relatório pagar');
+    }
+
     if (dados.success) {
       renderizarRelatorio('pagar', 'Contas a Pagar', dados, filtros);
     }
@@ -400,16 +436,28 @@ async function gerarRelatorioFluxo(filtros) {
 
 async function gerarRelatorioInadimplencia(filtros) {
   try {
-    const response = await fetch(`/api/financeiro/relatorios/inadimplencia?dataInicio=${filtros.dataInicio}&dataFim=${filtros.dataFim}`, {
-      headers: {
-        'Accept': 'application/json',
-        'Authorization': 'Bearer ' + localStorage.getItem('token')
+    const response = await fetch(
+      `/api/financeiro/relatorios/inadimplencia?dataInicio=${filtros.dataInicio}&dataFim=${filtros.dataFim}`,
+      {
+        headers: {
+          'Accept': 'application/json',
+          'Authorization': 'Bearer ' + localStorage.getItem('token')
+        }
       }
-    });
+    );
+
+    if (response.status === 401) {
+      throw new Error('Sessão expirada. Faça login novamente.');
+    }
+
     const dados = await response.json();
-    
+
+    if (!response.ok) {
+      throw new Error(dados.error || 'Erro ao gerar relatório inadimplência');
+    }
+
     if (dados.success) {
-      renderizarRelatorio('inadimplencia', 'Inadimplência', dados, filtros);
+      renderizarRelatorio('inadimplencia', 'Relatório de Inadimplência', dados, filtros);
     }
   } catch (error) {
     console.error('Erro ao gerar relatório inadimplência:', error);

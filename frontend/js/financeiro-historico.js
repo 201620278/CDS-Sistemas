@@ -45,26 +45,58 @@ function renderHistoricoFinanceiro(periodo) {
 }
 
 async function carregarHistoricoFinanceiro(periodo) {
-  const filtroDescricao = document.getElementById('filtroDescricao')?.value || '';
-  const filtroTipo = document.getElementById('filtroTipo')?.value || '';
-  const filtroStatus = document.getElementById('filtroStatus')?.value || '';
+  try {
+    const filtroDescricao = document.getElementById('filtroDescricao')?.value || '';
+    const filtroTipo = document.getElementById('filtroTipo')?.value || '';
+    const filtroStatus = document.getElementById('filtroStatus')?.value || '';
 
-  let url = '/api/financeiro';
+    let url = '/api/financeiro';
+    const params = new URLSearchParams();
 
-  const params = new URLSearchParams();
+    if (periodo?.dataInicio) params.append('dataInicio', periodo.dataInicio);
+    if (periodo?.dataFim) params.append('dataFim', periodo.dataFim);
+    if (filtroDescricao) params.append('busca', filtroDescricao);
+    if (filtroTipo) params.append('tipo', filtroTipo);
+    if (filtroStatus) params.append('status', filtroStatus);
 
-  if (periodo?.dataInicio) params.append('dataInicio', periodo.dataInicio);
-  if (periodo?.dataFim) params.append('dataFim', periodo.dataFim);
-  if (filtroDescricao) params.append('busca', filtroDescricao);
-  if (filtroTipo) params.append('tipo', filtroTipo);
-  if (filtroStatus) params.append('status', filtroStatus);
+    if ([...params].length) {
+      url += '?' + params.toString();
+    }
 
-  if ([...params].length) url += '?' + params.toString();
+    const token = localStorage.getItem('token');
 
-  const res = await fetch(url);
-  const data = await res.json();
+    const res = await fetch(url, {
+      headers: {
+        'Accept': 'application/json',
+        'Authorization': 'Bearer ' + token
+      }
+    });
 
-  preencherTabelaHistorico(data);
+    if (res.status === 401) {
+      throw new Error('Sessão expirada. Faça login novamente.');
+    }
+
+    const data = await res.json();
+
+    if (!res.ok) {
+      throw new Error(data.error || 'Erro ao carregar histórico financeiro');
+    }
+
+    preencherTabelaHistorico(data);
+  } catch (error) {
+    console.error('Erro ao carregar histórico financeiro:', error);
+
+    const tbody = document.getElementById('tabelaHistoricoFinanceiro');
+    if (tbody) {
+      tbody.innerHTML = `
+        <tr>
+          <td colspan="8" style="text-align:center;color:red;">
+            ${error.message || 'Erro ao carregar histórico financeiro'}
+          </td>
+        </tr>
+      `;
+    }
+  }
 }
 
 function preencherTabelaHistorico(lista) {
