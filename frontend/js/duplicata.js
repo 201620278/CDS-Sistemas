@@ -3,6 +3,7 @@ let modalPagamentoDuplicata = null;
 let modalDetalhesRecebimento = null;
 let modalHistoricoDuplicata = null;
 let duplicataVendas = [];
+let duplicataResumo = {};
 
 async function carregarDuplicata(clienteId) {
   clienteAtual = clienteId;
@@ -23,12 +24,13 @@ async function carregarDuplicata(clienteId) {
     }
 
     const cliente = data.cliente || {};
+    duplicataResumo = data.resumo || {};
     duplicataVendas = data.vendas || [];
 
     renderizarHeaderDuplicata(cliente);
     renderizarParcelasDuplicata(duplicataVendas);
     renderizarDetalhesCompras(duplicataVendas);
-    atualizarResumoFinanceiro(cliente);
+    atualizarResumoFinanceiro(duplicataResumo);
   } catch (erro) {
     console.error('Erro ao carregar duplicata:', erro);
     exibirErroDuplicata('Erro ao carregar a duplicata. Tente novamente.');
@@ -182,26 +184,32 @@ function abrirDetalhesRecebimento(vendaId) {
 function renderizarDetalhesRecebimento(venda) {
   const produtos = Array.isArray(venda.produtos) ? venda.produtos : [];
   const listaProdutos = produtos.map(produto => `
-      <tr>
-        <td>${escapeHtml(produto.nome_produto || '-')}</td>
-        <td>${produto.quantidade || 0}</td>
-        <td>${formatarMoeda(produto.preco_unitario || 0)}</td>
-        <td>${formatarMoeda(produto.subtotal || 0)}</td>
-      </tr>
-    `).join('');
+    <tr>
+      <td>${escapeHtml(produto.nome_produto || '-')}</td>
+      <td>${produto.quantidade || 0}</td>
+      <td>${formatarMoeda(produto.preco_unitario || 0)}</td>
+      <td>${formatarMoeda(produto.subtotal || 0)}</td>
+    </tr>
+  `).join('');
+
+  const primeiraParcela = Array.isArray(venda.parcelas) && venda.parcelas.length ? venda.parcelas[0] : null;
+  const parcelaTexto = primeiraParcela ? primeiraParcela.parcela : '-';
 
   return `
     <div class="mb-3">
-      <strong>Venda:</strong> #${venda.venda_id}<br>
+      <strong>Venda:</strong> #${venda.numero_venda || venda.venda_id}<br>
       <strong>Data da venda:</strong> ${formatarData(venda.data_venda)}<br>
       <strong>Vencimento:</strong> ${venda.data_vencimento ? formatarData(venda.data_vencimento) : '-'}<br>
       <strong>Status:</strong> <span class="status ${obterClasseStatus(venda.status)}">${venda.status || 'aberto'}</span>
     </div>
+
     <div class="d-flex gap-3 mb-3 flex-wrap">
-      <div><strong>Total da venda:</strong> ${formatarMoeda(Number(venda.valor_total_venda || 0))}</div>
+      <div><strong>Total da venda:</strong> ${formatarMoeda(Number(venda.valor_total || 0))}</div>
+      <div><strong>Já pago:</strong> ${formatarMoeda(Number(venda.valor_pago || 0))}</div>
       <div><strong>Saldo aberto:</strong> ${formatarMoeda(Number(venda.saldo_aberto || 0))}</div>
-      <div><strong>Parcela:</strong> ${venda.numero_parcela || '-'} / ${venda.total_parcelas || '-'}</div>
+      <div><strong>Parcelas:</strong> ${parcelaTexto}</div>
     </div>
+
     <div class="mb-3">
       <h6>Produtos</h6>
       <table class="table table-sm table-striped">
@@ -218,6 +226,32 @@ function renderizarDetalhesRecebimento(venda) {
         </tbody>
       </table>
     </div>
+
+    <div class="mb-3">
+      <h6>Parcelas em aberto</h6>
+      <table class="table table-sm table-bordered">
+        <thead>
+          <tr>
+            <th>Parcela</th>
+            <th>Vencimento</th>
+            <th>Valor</th>
+            <th>Saldo</th>
+            <th>Status</th>
+          </tr>
+        </thead>
+        <tbody>
+          ${(venda.parcelas || []).map(parcela => `
+            <tr>
+              <td>${escapeHtml(parcela.parcela || '-')}</td>
+              <td>${formatarData(parcela.vencimento)}</td>
+              <td>${formatarMoeda(parcela.valor_parcela || 0)}</td>
+              <td>${formatarMoeda(parcela.valor_restante || 0)}</td>
+              <td><span class="status ${obterClasseStatus(parcela.status)}">${parcela.status || 'aberto'}</span></td>
+            </tr>
+          `).join('') || '<tr><td colspan="5" class="text-center">Sem parcelas registradas</td></tr>'}
+        </tbody>
+      </table>
+    </div>
   `;
 }
 
@@ -226,10 +260,10 @@ function renderizarHeaderDuplicata(cliente) {
   document.getElementById('clienteCpf').innerText = cliente.cpf || '';
 }
 
-function atualizarResumoFinanceiro(cliente) {
-  const totalDivida = cliente.total_em_aberto || 0;
-  const totalPago = cliente.total_ja_pago || 0;
-  const saldoAtual = totalDivida;
+function atualizarResumoFinanceiro(resumo) {
+  const totalDivida = Number(resumo.totalDivida || 0);
+  const totalPago = Number(resumo.totalPago || 0);
+  const saldoAtual = Number(resumo.saldoAtual || 0);
 
   document.getElementById('totalDivida').innerText = formatarMoeda(totalDivida);
   document.getElementById('totalPago').innerText = formatarMoeda(totalPago);
@@ -239,6 +273,9 @@ function atualizarResumoFinanceiro(cliente) {
   if (saldoAtual <= 0) {
     statusElemento.innerText = 'QUITADO';
     statusElemento.className = 'status verde';
+  } else if (totalPago > 0) {
+    statusElemento.innerText = 'PAGAMENTO PARCIAL';
+    statusElemento.className = 'status amarelo';
   } else {
     statusElemento.innerText = 'EM ABERTO';
     statusElemento.className = 'status vermelho';
@@ -255,14 +292,14 @@ function renderizarParcelasDuplicata(vendas) {
   }
 
   vendas.forEach(venda => {
-    const valorTotal = Number(venda.valor_total_venda || 0);
+    const valorTotal = Number(venda.valor_total || 0);
     const valorRestante = Number(venda.saldo_aberto || 0);
     const dataVenda = formatarData(venda.data_venda);
     const statusClass = obterClasseStatus(venda.status);
 
     tbody.innerHTML += `
       <tr>
-        <td>#${venda.venda_id}</td>
+        <td>#${venda.numero_venda || venda.venda_id}</td>
         <td>${dataVenda}</td>
         <td>${venda.data_vencimento ? formatarData(venda.data_vencimento) : '-'}</td>
         <td>${formatarMoeda(valorTotal)}</td>
@@ -299,12 +336,13 @@ function renderizarDetalhesCompras(vendas) {
     container.innerHTML += `
       <div class="duplicata-compra-card">
         <div class="duplicata-compra-header">
-          <div><strong>Venda:</strong> #${venda.venda_id}</div>
+          <div><strong>Venda:</strong> #${venda.numero_venda || venda.venda_id}</div>
           <div><strong>Data:</strong> ${formatarData(venda.data_venda)}</div>
           <div><strong>Status:</strong> <span class="status ${obterClasseStatus(venda.status)}">${venda.status || 'aberto'}</span></div>
         </div>
         <div class="duplicata-compra-saldo">
-          <span>Total: ${formatarMoeda(Number(venda.valor_total_venda || 0))}</span>
+          <span>Total: ${formatarMoeda(Number(venda.valor_total || 0))}</span>
+          <span>Pago: ${formatarMoeda(Number(venda.valor_pago || 0))}</span>
           <span>Saldo: ${formatarMoeda(Number(venda.saldo_aberto || 0))}</span>
         </div>
         <table class="tabela duplicata-produtos">
@@ -328,6 +366,7 @@ function renderizarDetalhesCompras(vendas) {
 function obterClasseStatus(status) {
   if (status === 'vencido') return 'vermelho';
   if (status === 'parcial') return 'amarelo';
+  if (status === 'aberto') return 'vermelho';
   return 'verde';
 }
 
@@ -337,36 +376,3 @@ function formatarData(valor) {
   if (Number.isNaN(data.getTime())) return valor;
   return data.toLocaleDateString('pt-BR');
 }
-
-function formatarMoeda(valor) {
-  const numero = Number(valor || 0);
-  return new Intl.NumberFormat('pt-BR', {
-    style: 'currency',
-    currency: 'BRL'
-  }).format(numero);
-}
-
-function escapeHtml(text) {
-  return String(text || '').replace(/[&<>"]/g, char => ({
-    '&': '&amp;',
-    '<': '&lt;',
-    '>': '&gt;',
-    '"': '&quot;'
-  })[char]);
-}
-
-function exibirErroDuplicata(mensagem) {
-  const tbody = document.getElementById('listaParcelas');
-  tbody.innerHTML = `<tr><td colspan="7" class="text-center text-danger">${escapeHtml(mensagem)}</td></tr>`;
-  document.getElementById('detalhesCompras').innerHTML = '';
-}
-
-window.carregarDuplicata = carregarDuplicata;
-
-document.addEventListener('DOMContentLoaded', () => {
-  const params = new URLSearchParams(window.location.search);
-  const clienteId = params.get('clienteId');
-  if (clienteId) {
-    carregarDuplicata(clienteId);
-  }
-});

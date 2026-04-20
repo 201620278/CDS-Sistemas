@@ -2,7 +2,6 @@
 function renderDashboardFinanceiro(periodo) {
   const conteudo = document.getElementById('financeiroConteudo');
 
-  // Estrutura HTML do dashboard
   conteudo.innerHTML = `
     <div class="dashboard-cards">
       <div class="dashboard-card recebido">
@@ -76,7 +75,6 @@ function renderDashboardFinanceiro(periodo) {
     </div>
   `;
 
-  // Carregar dados do dashboard
   carregarDashboardFinanceiro(periodo);
 }
 
@@ -87,10 +85,11 @@ async function carregarDashboardFinanceiro(periodo) {
         'Authorization': 'Bearer ' + localStorage.getItem('token')
       }
     });
+
     const dados = await response.json();
 
     if (dados.success) {
-      preencherCardsDashboard(dados.resumo);
+      preencherCardsDashboard(dados.resumo || {});
       preencherProximosRecebimentos(dados.proximos_recebimentos || []);
       preencherProximosPagamentos(dados.proximos_pagamentos || []);
       preencherAlertasFinanceiros(dados.alertas || []);
@@ -105,30 +104,38 @@ async function carregarDashboardFinanceiro(periodo) {
 }
 
 function preencherCardsDashboard(resumo) {
-  document.getElementById('totalRecebido').textContent = formatarMoeda(resumo.totalRecebido || 0);
-  document.getElementById('totalPago').textContent = formatarMoeda(resumo.totalPago || 0);
-  document.getElementById('totalReceber').textContent = formatarMoeda(resumo.totalReceber || 0);
-  document.getElementById('saldoPeriodo').textContent = formatarMoeda(resumo.saldoPeriodo || 0);
+  const totalRecebido = Number(resumo.totalRecebido || 0);
+  const totalPago = Number(resumo.totalPago || 0);
+  const totalReceber = Number(resumo.totalReceber || 0);
+  const saldoPeriodo = totalRecebido - totalPago;
+
+  document.getElementById('totalRecebido').textContent = formatarMoeda(totalRecebido);
+  document.getElementById('totalPago').textContent = formatarMoeda(totalPago);
+  document.getElementById('totalReceber').textContent = formatarMoeda(totalReceber);
+  document.getElementById('saldoPeriodo').textContent = formatarMoeda(saldoPeriodo);
 }
 
 function preencherProximosRecebimentos(lista) {
   const container = document.getElementById('proximosRecebimentos');
 
   if (lista.length > 0) {
-    container.innerHTML = lista.map(item => `
-      <div class="dashboard-item">
-        <div>
-          <strong>${item.descricao}</strong><br>
-          <small class="text-muted">${item.cliente || '-'}</small>
-        </div>
-        <div class="text-right">
-          <div class="alerta ${getClasseAlerta(item.diasRestantes)}">
-            ${formatarData(item.dataVencimento)}
+    container.innerHTML = lista.map(item => {
+      const diasRestantes = calcularDiasRestantes(item.dataVencimento);
+      return `
+        <div class="dashboard-item">
+          <div>
+            <strong>${escapeHtmlDashboard(item.descricao || '-')}</strong><br>
+            <small class="text-muted">${escapeHtmlDashboard(item.cliente || '-')}</small>
           </div>
-          <div class="font-weight-bold">${formatarMoeda(item.valor)}</div>
+          <div class="text-right">
+            <div class="alerta ${getClasseAlerta(diasRestantes)}">
+              ${formatarData(item.dataVencimento)}
+            </div>
+            <div class="font-weight-bold">${formatarMoeda(item.valor || 0)}</div>
+          </div>
         </div>
-      </div>
-    `).join('');
+      `;
+    }).join('');
   } else {
     container.innerHTML = '<div class="text-center text-muted">Nenhum recebimento próximo</div>';
   }
@@ -138,20 +145,23 @@ function preencherProximosPagamentos(lista) {
   const container = document.getElementById('proximosPagamentos');
 
   if (lista.length > 0) {
-    container.innerHTML = lista.map(item => `
-      <div class="dashboard-item">
-        <div>
-          <strong>${item.descricao}</strong><br>
-          <small class="text-muted">${item.fornecedor || '-'}</small>
-        </div>
-        <div class="text-right">
-          <div class="alerta ${getClasseAlerta(item.diasRestantes)}">
-            ${formatarData(item.dataVencimento)}
+    container.innerHTML = lista.map(item => {
+      const diasRestantes = calcularDiasRestantes(item.dataVencimento);
+      return `
+        <div class="dashboard-item">
+          <div>
+            <strong>${escapeHtmlDashboard(item.descricao || '-')}</strong><br>
+            <small class="text-muted">${escapeHtmlDashboard(item.fornecedor || '-')}</small>
           </div>
-          <div class="font-weight-bold">${formatarMoeda(item.valor)}</div>
+          <div class="text-right">
+            <div class="alerta ${getClasseAlerta(diasRestantes)}">
+              ${formatarData(item.dataVencimento)}
+            </div>
+            <div class="font-weight-bold">${formatarMoeda(item.valor || 0)}</div>
+          </div>
         </div>
-      </div>
-    `).join('');
+      `;
+    }).join('');
   } else {
     container.innerHTML = '<div class="text-center text-muted">Nenhum pagamento próximo</div>';
   }
@@ -162,9 +172,13 @@ function preencherAlertasFinanceiros(alertas) {
 
   if (alertas.length > 0) {
     container.innerHTML = alertas.map(alerta => `
-      <div class="alerta ${alerta.tipo}">
-        <strong>${alerta.titulo}</strong><br>
-        <small>${alerta.descricao}</small>
+      <div class="alerta ${mapearClasseStatusAlerta(alerta.status)}">
+        <strong>${escapeHtmlDashboard(alerta.descricao || 'Alerta financeiro')}</strong><br>
+        <small>
+          ${escapeHtmlDashboard(alerta.pessoa || 'Sem identificação')}
+          • Vencimento: ${formatarData(alerta.dataVencimento)}
+          • Valor: ${formatarMoeda(alerta.valor || 0)}
+        </small>
       </div>
     `).join('');
   } else {
@@ -176,7 +190,6 @@ function renderGraficoFinanceiro(dados) {
   const ctx = document.getElementById('chartFinanceiro');
 
   if (typeof Chart !== 'undefined' && ctx) {
-    // Destruir gráfico anterior se existir
     if (window.chartFinanceiro && typeof window.chartFinanceiro.destroy === 'function') {
       window.chartFinanceiro.destroy();
     }
@@ -188,10 +201,10 @@ function renderGraficoFinanceiro(dados) {
         datasets: [{
           label: 'Valores (R$)',
           data: [
-            dados.recebido || 0,
-            dados.pago || 0,
-            dados.receber || 0,
-            dados.pagar || 0
+            Number(dados.recebido || 0),
+            Number(dados.pago || 0),
+            Number(dados.receber || 0),
+            Number(dados.pagar || 0)
           ],
           backgroundColor: [
             '#28a745',
@@ -223,7 +236,6 @@ function renderGraficoFinanceiro(dados) {
       }
     });
   } else {
-    // Fallback se Chart.js não estiver disponível ou canvas não encontrado
     if (ctx && ctx.parentElement) {
       ctx.parentElement.innerHTML = `
         <div class="text-center text-muted" style="padding: 50px;">
@@ -233,6 +245,26 @@ function renderGraficoFinanceiro(dados) {
       `;
     }
   }
+}
+
+function calcularDiasRestantes(data) {
+  if (!data) return 999;
+
+  const hoje = new Date();
+  hoje.setHours(0, 0, 0, 0);
+
+  const vencimento = new Date(data);
+  vencimento.setHours(0, 0, 0, 0);
+
+  const diff = vencimento.getTime() - hoje.getTime();
+  return Math.ceil(diff / (1000 * 60 * 60 * 24));
+}
+
+function mapearClasseStatusAlerta(status) {
+  if (status === 'vencido') return 'vencido';
+  if (status === 'parcial') return 'proximo';
+  if (status === 'aberto') return 'boleto';
+  return 'boleto';
 }
 
 function getClasseAlerta(dias) {
@@ -247,14 +279,25 @@ function formatarMoeda(valor) {
   return new Intl.NumberFormat('pt-BR', {
     style: 'currency',
     currency: 'BRL'
-  }).format(valor);
+  }).format(Number(valor || 0));
 }
 
 function formatarData(data) {
-  return new Date(data).toLocaleDateString('pt-BR');
+  if (!data) return '-';
+  const d = new Date(data);
+  if (Number.isNaN(d.getTime())) return data;
+  return d.toLocaleDateString('pt-BR');
+}
+
+function escapeHtmlDashboard(texto) {
+  return String(texto || '')
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;')
+    .replace(/'/g, '&#039;');
 }
 
 function mostrarErro(mensagem) {
   console.error(mensagem);
-  // Implementar notificação visual se necessário
 }

@@ -1,6 +1,7 @@
-let produtosList = [];
+let produtosCompraList = [];
 let fornecedoresList = [];
 let itensCompraAtual = [];
+let compraImportadaXml = null;
 
 function loadCompras() {
     $.when(
@@ -8,7 +9,7 @@ function loadCompras() {
         $.ajax({ url: `${API_URL}/compras`, method: 'GET' }),
         $.ajax({ url: `${API_URL}/fornecedores`, method: 'GET' })
     ).done(function(produtosResp, comprasResp, fornecedoresResp) {
-        produtosList = produtosResp[0] || [];
+        produtosCompraList = produtosResp[0] || [];
         fornecedoresList = fornecedoresResp[0] || [];
         renderCompras(comprasResp[0] || []);
     }).fail(function() {
@@ -237,7 +238,7 @@ function removerItemCompra(index) {
 
 function renderItensCompraTabela() {
     const tbody = $('#itensCompraBody');
-    const optionsProdutos = '<option value="">Selecione</option>' + produtosList.map(p => `<option value="${p.id}">${p.nome}</option>`).join('');
+    const optionsProdutos = '<option value="">Selecione</option>' + produtosCompraList.map(p => `<option value="${p.id}">${p.nome}</option>`).join('');
     tbody.html(itensCompraAtual.map((item, index) => `
         <tr>
             <td style="min-width:220px;">
@@ -287,7 +288,7 @@ function alterarNumeroItemCompra(index, campo, valor, origem) {
 }
 
 function alterarProdutoItemCompra(index, produtoId) {
-    const produto = produtosList.find(p => String(p.id) === String(produtoId));
+    const produto = produtosCompraList.find(p => String(p.id) === String(produtoId));
     if (!itensCompraAtual[index]) return;
     itensCompraAtual[index].produto_id = produtoId ? Number(produtoId) : '';
     if (produto) {
@@ -332,7 +333,7 @@ function adicionarItemCompra() {
         margemFinal = preco > 0 ? ((precoVenda - preco) / preco) * 100 : 0;
     }
 
-    const produto = produtosList.find(p => String(p.id) === String(produtoId));
+    const produto = produtosCompraList.find(p => String(p.id) === String(produtoId));
     const item = normalizeItemCompra({
         produto_id: produto ? produto.id : '',
         produto_nome: produto ? produto.nome : descricaoLivre,
@@ -464,7 +465,7 @@ function findFornecedorByTerm(term) {
 function findProdutoByInput(input) {
     const cleaned = input.replace(/\s+-\s+.*$/, '').trim();
     const lower = input.toLowerCase().trim();
-    return produtosList.find(p => {
+    return produtosCompraList.find(p => {
         const codigo = String(p.codigo || '').trim();
         const codigoBarras = String(p.codigo_barras || '').trim();
         const nome = String(p.nome || '').toLowerCase().trim();
@@ -491,6 +492,21 @@ function showCompraModal() {
                     </div>
                     <div class="modal-body">
                                             <div class="row g-3">
+    <div class="col-12">
+        <h6 class="border-bottom pb-2 mb-2">Importar XML da NF-e</h6>
+    </div>
+    <div class="col-md-8">
+        <input type="file" class="form-control" id="xmlFile" accept=".xml" onchange="importarXmlCompra(this)">
+        <small class="text-muted">Selecione o arquivo XML da nota fiscal para importar os dados automaticamente.</small>
+    </div>
+    <div class="col-md-4">
+        <button type="button" class="btn btn-outline-secondary" onclick="limparImportacaoXml()">Limpar importação</button>
+    </div>
+</div>
+
+<hr>
+
+<div class="row g-3">
     <div class="col-12">
         <h6 class="border-bottom pb-2 mb-2">Dados da nota de compra</h6>
     </div>
@@ -557,14 +573,14 @@ function showCompraModal() {
                                 <label class="form-label">Código de barras / descrição rápida</label>
                                 <input type="text" class="form-control" id="codigo_barras_item" placeholder="Leitor, código ou nome" list="produtos-datalist" autocomplete="off" oninput="onProdutoInput()" onkeydown="onProdutoKeyDown(event)">
                                 <datalist id="produtos-datalist">
-                                    ${produtosList.map(p => `<option value="${escapeHtml((p.codigo_barras || p.codigo || '') + ' - ' + p.nome)}"></option>`).join('')}
+                                    ${produtosCompraList.map(p => `<option value="${escapeHtml((p.codigo_barras || p.codigo || '') + ' - ' + p.nome)}"></option>`).join('')}
                                 </datalist>
                             </div>
                             <div class="col-md-2">
                                 <label class="form-label">Produto</label>
                                 <select class="form-control" id="produto_id_item">
                                     <option value="">Selecione</option>
-                                    ${produtosList.map(p => `<option value="${p.id}">${escapeHtml(p.nome)}</option>`).join('')}
+                                    ${produtosCompraList.map(p => `<option value="${p.id}">${escapeHtml(p.nome)}</option>`).join('')}
                                 </select>
                             </div>
                             <div class="col-md-1">
@@ -839,4 +855,78 @@ function deleteCompra(id) {
     }).fail(function(xhr) {
         showNotification(xhr.responseJSON?.error || 'Erro ao excluir compra.', 'danger');
     });
+}
+
+function importarXmlCompra(input) {
+    const file = input.files[0];
+    if (!file) return;
+
+    const formData = new FormData();
+    formData.append('xml', file);
+
+    $.ajax({
+        url: `${API_URL}/compras/parse-xml`,
+        method: 'POST',
+        data: formData,
+        processData: false,
+        contentType: false
+    }).done(function(data) {
+        compraImportadaXml = data;
+        preencherFormularioCompra(data);
+        showNotification('XML importado com sucesso!', 'success');
+    }).fail(function(xhr) {
+        showNotification(xhr.responseJSON?.error || 'Erro ao importar XML.', 'danger');
+    });
+}
+
+function limparImportacaoXml() {
+    compraImportadaXml = null;
+    $('#xmlFile').val('');
+    // Reset form to empty
+    $('#data_compra').val(new Date().toISOString().split('T')[0]);
+    $('#data_emissao').val(new Date().toISOString().split('T')[0]);
+    $('#data_entrada').val(new Date().toISOString().split('T')[0]);
+    $('#fornecedor').val('');
+    $('#numero_nf').val('');
+    $('#serie_nf').val('');
+    $('#modelo_nf').val('55');
+    $('#chave_acesso').val('');
+    $('#observacao_compra').val('');
+    $('#valor_produtos').val('0.00');
+    $('#valor_desconto').val('0.00');
+    $('#valor_frete').val('0.00');
+    $('#valor_outras_despesas').val('0.00');
+    $('#valor_total_nota').val('0.00');
+    $('#condicao_pagamento').val('avista');
+    $('#forma_pagamento').val('');
+    $('#valor_entrada').val('0');
+    $('#parcelas').val('1');
+    $('#data_vencimento').val(new Date().toISOString().split('T')[0]);
+    itensCompraAtual = [];
+    renderItensCompraTabela();
+    atualizarVisibilidadePagamentoCompra();
+}
+
+function preencherFormularioCompra(data) {
+    $('#data_emissao').val(data.data_emissao || $('#data_compra').val());
+    $('#data_entrada').val(data.data_entrada || $('#data_compra').val());
+    $('#fornecedor').val(data.fornecedor || '');
+    $('#numero_nf').val(data.numero_nf || '');
+    $('#serie_nf').val(data.serie_nf || '');
+    $('#modelo_nf').val(data.modelo_nf || '55');
+    $('#chave_acesso').val(data.chave_acesso || '');
+    $('#observacao_compra').val(data.observacao || '');
+    $('#valor_produtos').val(formatNumberInput(data.valor_produtos || 0));
+    $('#valor_desconto').val(formatNumberInput(data.valor_desconto || 0));
+    $('#valor_frete').val(formatNumberInput(data.valor_frete || 0));
+    $('#valor_outras_despesas').val(formatNumberInput(data.valor_outras_despesas || 0));
+    $('#valor_total_nota').val(formatNumberInput(data.valor_total_nota || 0));
+
+    // Itens
+    itensCompraAtual = (data.itens || []).map(item => normalizeItemCompra(item));
+    renderItensCompraTabela();
+
+    // Pagamento padrão
+    $('#condicao_pagamento').val('avista');
+    atualizarVisibilidadePagamentoCompra();
 }

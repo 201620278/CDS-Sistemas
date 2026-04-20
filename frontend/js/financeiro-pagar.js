@@ -1,6 +1,13 @@
+window.__financeiroPagarState = window.__financeiroPagarState || {
+  modalNovaDespesaInstance: null,
+  modalDetalhesPagamento: null
+};
+
 // Contas a Pagar
 function renderContasPagar(periodo) {
   const conteudo = document.getElementById('financeiroConteudo');
+
+  if (!conteudo) return;
 
   conteudo.innerHTML = `
     <div class="financeiro-filtros">
@@ -14,6 +21,7 @@ function renderContasPagar(periodo) {
           <option value="vencido">Vencido</option>
         </select>
       </div>
+
       <div class="financeiro-filtro-grupo">
         <label for="filtroFornecedorPagar">Fornecedor:</label>
         <input
@@ -23,6 +31,7 @@ function renderContasPagar(periodo) {
           placeholder="Nome, CPF ou CNPJ do fornecedor"
         />
       </div>
+
       <div class="financeiro-acoes">
         <button class="btn btn-danger" onclick="novaDespesa()">
           <i class="fas fa-plus"></i> Nova Despesa
@@ -40,6 +49,7 @@ function renderContasPagar(periodo) {
             <th>Data</th>
             <th>Vencimento</th>
             <th>Fornecedor</th>
+            <th>Categoria</th>
             <th>Descrição</th>
             <th>Valor</th>
             <th>Status</th>
@@ -48,17 +58,95 @@ function renderContasPagar(periodo) {
         </thead>
         <tbody>
           <tr>
-            <td colspan="7" class="text-center">Carregando...</td>
+            <td colspan="8" class="text-center">Carregando...</td>
           </tr>
         </tbody>
       </table>
     </div>
+
+    <div class="modal fade" id="modalNovaDespesa" tabindex="-1" aria-labelledby="modalNovaDespesaLabel" aria-hidden="true">
+      <div class="modal-dialog modal-lg">
+        <div class="modal-content">
+          <div class="modal-header">
+            <h5 class="modal-title" id="modalNovaDespesaLabel">Nova Despesa</h5>
+            <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Fechar"></button>
+          </div>
+          <form id="formNovaDespesa">
+            <div class="modal-body">
+              <div class="row g-3">
+                <div class="col-md-8">
+                  <label class="form-label">Descrição *</label>
+                  <input type="text" class="form-control" id="despesaDescricao" required>
+                </div>
+
+                <div class="col-md-4">
+                  <label class="form-label">Categoria *</label>
+                  <select class="form-select" id="despesaCategoria" required>
+                    <option value="">Carregando...</option>
+                  </select>
+                </div>
+
+                <div class="col-md-4">
+                  <label class="form-label">Valor *</label>
+                  <input type="number" class="form-control" id="despesaValor" min="0.01" step="0.01" required>
+                </div>
+
+                <div class="col-md-4">
+                  <label class="form-label">Data do lançamento *</label>
+                  <input type="date" class="form-control" id="despesaData" required>
+                </div>
+
+                <div class="col-md-4">
+                  <label class="form-label">Vencimento *</label>
+                  <input type="date" class="form-control" id="despesaVencimento" required>
+                </div>
+
+                <div class="col-md-6">
+                  <label class="form-label">Fornecedor / Favorecido</label>
+                  <input type="text" class="form-control" id="despesaFornecedor" placeholder="Opcional">
+                </div>
+
+                <div class="col-md-3">
+                  <label class="form-label">Forma de pagamento</label>
+                  <select class="form-select" id="despesaFormaPagamento">
+                    <option value="dinheiro">Dinheiro</option>
+                    <option value="pix">PIX</option>
+                    <option value="boleto">Boleto</option>
+                    <option value="cartao">Cartão</option>
+                    <option value="transferencia">Transferência</option>
+                    <option value="outro">Outro</option>
+                  </select>
+                </div>
+
+                <div class="col-md-3">
+                  <label class="form-label">Status</label>
+                  <select class="form-select" id="despesaStatus">
+                    <option value="pendente">Pendente</option>
+                    <option value="pago">Pago</option>
+                  </select>
+                </div>
+
+                <div class="col-12">
+                  <label class="form-label">Observação</label>
+                  <textarea class="form-control" id="despesaObservacao" rows="3"></textarea>
+                </div>
+              </div>
+
+              <div id="erroNovaDespesa" class="text-danger mt-3"></div>
+            </div>
+
+            <div class="modal-footer">
+              <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancelar</button>
+              <button type="submit" class="btn btn-danger">Salvar Despesa</button>
+            </div>
+          </form>
+        </div>
+      </div>
+    </div>
   `;
 
-  // Configurar filtros
   configurarFiltrosPagar();
-
-  // Carregar dados iniciais com o período atual
+  inicializarModalNovaDespesa();
   carregarContasPagar(coletarFiltrosPagar(periodo));
 }
 
@@ -69,33 +157,14 @@ function configurarFiltrosPagar() {
   if (statusField) {
     statusField.addEventListener('change', filtrarPagar);
   }
+
   if (fornecedorField) {
     fornecedorField.addEventListener('input', filtrarPagar);
   }
 }
 
-
-async function carregarFornecedoresPagar() {
-  try {
-    const response = await fetch('/api/fornecedores', {
-      headers: {
-        'Authorization': 'Bearer ' + localStorage.getItem('token')
-      }
-    });
-    const dados = await response.json();
-
-    if (dados.success) {
-      const select = document.getElementById('filtroFornecedorPagar');
-      dados.fornecedores.forEach(fornecedor => {
-        const option = document.createElement('option');
-        option.value = fornecedor.id;
-        option.textContent = fornecedor.nome;
-        select.appendChild(option);
-      });
-    }
-  } catch (error) {
-    console.error('Erro ao carregar fornecedores:', error);
-  }
+function carregarContasPagar(filtros) {
+  carregarContasPagarDados(filtros);
 }
 
 async function carregarContasPagarDados(filtros) {
@@ -125,36 +194,37 @@ async function carregarContasPagarDados(filtros) {
     }
 
     const tbody = document.querySelector('#tabelaPagar tbody');
+    if (!tbody) return;
 
-    if (dados.success && dados.contas.length > 0) {
+    if (dados.success && Array.isArray(dados.contas) && dados.contas.length > 0) {
       tbody.innerHTML = dados.contas.map(conta => `
         <tr>
-          <td>${formatarData(conta.dataEmissao)}</td>
-          <td>${formatarData(conta.dataVencimento)}</td>
-          <td>${conta.fornecedor || '-'}</td>
-          <td>${conta.descricao}</td>
-          <td class="font-weight-bold">${formatarMoeda(conta.valor)}</td>
-          <td><span class="status-${conta.status}">${conta.status}</span></td>
+          <td>${formatarDataPagar(conta.dataEmissao)}</td>
+          <td>${formatarDataPagar(conta.dataVencimento)}</td>
+          <td>${escapeHtmlFinanceiro(conta.fornecedor || '-')}</td>
+          <td>${escapeHtmlFinanceiro(conta.categoria || '-')}</td>
+          <td>${escapeHtmlFinanceiro(conta.descricao || '')}</td>
+          <td class="font-weight-bold">${formatarMoedaPagar(conta.valor)}</td>
+          <td><span class="status-${conta.status}">${escapeHtmlFinanceiro(conta.status)}</span></td>
           <td>
-            <button class="btn btn-sm btn-outline-primary" onclick="editarPagamento(${conta.id})">
-              <i class="fas fa-edit"></i>
+            <button class="btn btn-sm btn-outline-primary" onclick="abrirDetalhesPagar(${conta.id})">
+              <i class="fas fa-eye"></i>
             </button>
             <button class="btn btn-sm btn-outline-success" onclick="pagarConta(${conta.id})">
               <i class="fas fa-check"></i>
-            </button>
-            <button class="btn btn-sm btn-outline-danger" onclick="excluirPagamento(${conta.id})">
-              <i class="fas fa-trash"></i>
             </button>
           </td>
         </tr>
       `).join('');
     } else {
-      tbody.innerHTML = '<tr><td colspan="7" class="text-center">Nenhuma conta a pagar encontrada</td></tr>';
+      tbody.innerHTML = '<tr><td colspan="8" class="text-center">Nenhuma conta a pagar encontrada</td></tr>';
     }
   } catch (error) {
     console.error('Erro ao carregar contas a pagar:', error);
-    document.querySelector('#tabelaPagar tbody').innerHTML =
-      '<tr><td colspan="7" class="text-center text-danger">Erro ao carregar dados</td></tr>';
+    const tbody = document.querySelector('#tabelaPagar tbody');
+    if (tbody) {
+      tbody.innerHTML = '<tr><td colspan="8" class="text-center text-danger">Erro ao carregar dados</td></tr>';
+    }
   }
 }
 
@@ -164,96 +234,165 @@ function filtrarPagar() {
   carregarContasPagar(filtros);
 }
 
-function novaDespesa() {
-  // Implementar modal ou navegação para nova despesa
-  alert('Funcionalidade de nova despesa em desenvolvimento');
+function inicializarModalNovaDespesa() {
+  const modalElement = document.getElementById('modalNovaDespesa');
+  const form = document.getElementById('formNovaDespesa');
+
+  if (modalElement && !window.__financeiroPagarState.modalNovaDespesaInstance) {
+    window.__financeiroPagarState.modalNovaDespesaInstance = new bootstrap.Modal(modalElement);
+  }
+
+  if (form && !form.dataset.bound) {
+    form.addEventListener('submit', salvarNovaDespesa);
+    form.dataset.bound = 'true';
+  }
 }
 
-let modalDetalhesPagamento = null;
+async function novaDespesa() {
+  if (!window.__financeiroPagarState.modalNovaDespesaInstance) {
+    inicializarModalNovaDespesa();
+  }
 
-function inicializarModalDetalhesPagamento() {
-  if (!modalDetalhesPagamento) {
-    const modalElement = document.getElementById('modalDetalhesFinanceiro');
-    if (modalElement) {
-      modalDetalhesPagamento = new bootstrap.Modal(modalElement);
+  const descricao = document.getElementById('despesaDescricao');
+  const valor = document.getElementById('despesaValor');
+  const data = document.getElementById('despesaData');
+  const vencimento = document.getElementById('despesaVencimento');
+  const fornecedor = document.getElementById('despesaFornecedor');
+  const formaPagamento = document.getElementById('despesaFormaPagamento');
+  const status = document.getElementById('despesaStatus');
+  const observacao = document.getElementById('despesaObservacao');
+  const erro = document.getElementById('erroNovaDespesa');
+
+  if (descricao) descricao.value = '';
+  if (valor) valor.value = '';
+  if (data) data.value = new Date().toISOString().slice(0, 10);
+  if (vencimento) vencimento.value = new Date().toISOString().slice(0, 10);
+  if (fornecedor) fornecedor.value = '';
+  if (formaPagamento) formaPagamento.value = 'dinheiro';
+  if (status) status.value = 'pendente';
+  if (observacao) observacao.value = '';
+  if (erro) erro.innerText = '';
+
+  await carregarCategoriasDespesa();
+
+  if (window.__financeiroPagarState.modalNovaDespesaInstance) {
+    window.__financeiroPagarState.modalNovaDespesaInstance.show();
+  }
+}
+
+async function carregarCategoriasDespesa() {
+  try {
+    const response = await fetch(`${API_URL}/categorias?tipo=despesa`, {
+      headers: {
+        'Authorization': 'Bearer ' + localStorage.getItem('token')
+      }
+    });
+
+    const categorias = await response.json();
+    const select = document.getElementById('despesaCategoria');
+    if (!select) return;
+
+    if (!Array.isArray(categorias) || !categorias.length) {
+      select.innerHTML = '<option value="">Nenhuma categoria de despesa cadastrada</option>';
+      return;
+    }
+
+    select.innerHTML =
+      '<option value="">Selecione</option>' +
+      categorias.map(cat => `<option value="${escapeHtmlFinanceiro(cat.nome)}">${escapeHtmlFinanceiro(cat.nome)}</option>`).join('');
+  } catch (error) {
+    console.error('Erro ao carregar categorias de despesa:', error);
+    const select = document.getElementById('despesaCategoria');
+    if (select) {
+      select.innerHTML = '<option value="">Erro ao carregar categorias</option>';
     }
   }
 }
 
-function editarPagamento(id) {
-  // Implementar edição
-  alert(`Editar pagamento ${id} - Em desenvolvimento`);
+async function salvarNovaDespesa(event) {
+  event.preventDefault();
+
+  const erroEl = document.getElementById('erroNovaDespesa');
+  if (erroEl) erroEl.innerText = '';
+
+  const payload = {
+    tipo: 'despesa',
+    descricao: (document.getElementById('despesaDescricao')?.value || '').trim(),
+    categoria: document.getElementById('despesaCategoria')?.value || '',
+    valor: Number(document.getElementById('despesaValor')?.value || 0),
+    data_movimento: document.getElementById('despesaData')?.value || '',
+    vencimento: document.getElementById('despesaVencimento')?.value || '',
+    pessoa_nome: (document.getElementById('despesaFornecedor')?.value || '').trim() || null,
+    forma_pagamento: document.getElementById('despesaFormaPagamento')?.value || 'dinheiro',
+    status: document.getElementById('despesaStatus')?.value || 'pendente',
+    observacao: (document.getElementById('despesaObservacao')?.value || '').trim(),
+    origem: 'manual'
+  };
+
+  if (!payload.descricao || !payload.categoria || payload.valor <= 0 || !payload.data_movimento || !payload.vencimento) {
+    if (erroEl) erroEl.innerText = 'Preencha os campos obrigatórios.';
+    return;
+  }
+
+  try {
+    const response = await fetch(`${API_URL}/financeiro`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'Authorization': 'Bearer ' + localStorage.getItem('token')
+      },
+      body: JSON.stringify(payload)
+    });
+
+    const result = await response.json();
+
+    if (!response.ok) {
+      if (erroEl) erroEl.innerText = result.error || 'Erro ao salvar despesa.';
+      return;
+    }
+
+    if (window.__financeiroPagarState.modalNovaDespesaInstance) {
+      window.__financeiroPagarState.modalNovaDespesaInstance.hide();
+    }
+
+    if (typeof showNotification === 'function') {
+      showNotification('Despesa cadastrada com sucesso.', 'success');
+    } else {
+      alert('Despesa cadastrada com sucesso.');
+    }
+
+    const periodo = obterPeriodoFinanceiro();
+    carregarContasPagar(coletarFiltrosPagar(periodo));
+
+    if (typeof carregarDashboardFinanceiro === 'function') {
+      carregarDashboardFinanceiro(periodo);
+    }
+
+    if (typeof carregarHistoricoFinanceiro === 'function') {
+      carregarHistoricoFinanceiro(periodo);
+    }
+  } catch (error) {
+    console.error('Erro ao salvar nova despesa:', error);
+    if (erroEl) erroEl.innerText = 'Erro ao conectar com o servidor.';
+  }
+}
+
+function inicializarModalDetalhesPagamento() {
+  if (!window.__financeiroPagarState.modalDetalhesPagamento) {
+    const modalElement = document.getElementById('modalDetalhesFinanceiro');
+    if (modalElement) {
+      window.__financeiroPagarState.modalDetalhesPagamento = new bootstrap.Modal(modalElement);
+    }
+  }
 }
 
 function pagarConta(id) {
-  // Implementar pagamento
   if (confirm('Confirmar pagamento desta conta?')) {
     baixarPagamento(id);
   }
 }
 
-function excluirPagamento(id) {
-  if (confirm('Tem certeza que deseja excluir este pagamento?')) {
-    // Implementar exclusão
-    alert(`Excluir pagamento ${id} - Em desenvolvimento`);
-  }
-}
-
-function exportarPagar() {
-  // Implementar exportação
-  alert('Exportação em desenvolvimento');
-}
-
-// Funções obrigatórias do prompt
-async function carregarContasPagar(filtros) {
-  return carregarContasPagarDados(filtros);
-}
-
-function preencherTabelaContasPagar(lista) {
-  const tbody = document.querySelector('#tabelaPagar tbody');
-  
-  if (lista && lista.length > 0) {
-    tbody.innerHTML = lista.map(conta => `
-      <tr>
-        <td>${conta.fornecedor || '-'}</td>
-        <td>${conta.descricao}</td>
-        <td>${conta.documento || '-'}</td>
-        <td>${conta.categoria || '-'}</td>
-        <td>${formatarData(conta.dataVencimento)}</td>
-        <td class="font-weight-bold">${formatarMoeda(conta.valor)}</td>
-        <td><span class="status-${conta.status}">${conta.status}</span></td>
-        <td>${conta.forma_pagamento || '-'}</td>
-        <td>${conta.origem || '-'}</td>
-        <td>
-          <button class="btn btn-sm btn-outline-success" onclick="baixarPagamento(${conta.id})" title="Pagar">
-            <i class="fas fa-check"></i>
-          </button>
-          <button class="btn btn-sm btn-outline-primary" onclick="abrirDetalhesPagar(${conta.id})" title="Detalhes">
-            <i class="fas fa-eye"></i>
-          </button>
-          <button class="btn btn-sm btn-outline-warning" onclick="editarContaPagar(${conta.id})" title="Editar">
-            <i class="fas fa-edit"></i>
-          </button>
-          <button class="btn btn-sm btn-outline-info" onclick="remarcarVencimento(${conta.id})" title="Remarcar">
-            <i class="fas fa-calendar"></i>
-          </button>
-          <button class="btn btn-sm btn-outline-danger" onclick="excluirContaPagar(${conta.id})" title="Excluir">
-            <i class="fas fa-trash"></i>
-          </button>
-          <button class="btn btn-sm btn-outline-secondary" onclick="anexarComprovante(${conta.id})" title="Anexar">
-            <i class="fas fa-paperclip"></i>
-          </button>
-        </td>
-      </tr>
-    `).join('');
-  } else {
-    tbody.innerHTML = '<tr><td colspan="10" class="text-center">Nenhuma conta a pagar encontrada</td></tr>';
-  }
-}
-
 async function baixarPagamento(id) {
-  if (!confirm('Tem certeza que deseja realizar este pagamento?')) return;
-
   try {
     const response = await fetch(`/api/financeiro/pagar/${id}/baixar`, {
       method: 'POST',
@@ -262,16 +401,16 @@ async function baixarPagamento(id) {
         'Authorization': 'Bearer ' + localStorage.getItem('token')
       }
     });
-    
+
     const result = await response.json();
-    
+
     if (result.success) {
       alert('Pagamento realizado com sucesso!');
       const periodo = obterPeriodoFinanceiro();
       carregarContasPagar(coletarFiltrosPagar(periodo));
-      // Atualizar dashboard se estiver ativo
+
       if (typeof carregarDashboardFinanceiro === 'function') {
-        carregarDashboardFinanceiro(obterPeriodoFinanceiro());
+        carregarDashboardFinanceiro(periodo);
       }
     } else {
       alert('Erro ao realizar pagamento: ' + (result.error || 'Erro desconhecido'));
@@ -287,6 +426,7 @@ function abrirDetalhesPagar(id) {
 
   const body = document.getElementById('modalDetalhesFinanceiroBody');
   const title = document.getElementById('modalDetalhesFinanceiroLabel');
+
   if (!body || !title) {
     alert('Modal de detalhes não encontrado.');
     return;
@@ -294,8 +434,9 @@ function abrirDetalhesPagar(id) {
 
   title.textContent = 'Detalhes da Conta a Pagar';
   body.innerHTML = '<div class="text-center text-muted">Carregando detalhes...</div>';
-  if (modalDetalhesPagamento) {
-    modalDetalhesPagamento.show();
+
+  if (window.__financeiroPagarState.modalDetalhesPagamento) {
+    window.__financeiroPagarState.modalDetalhesPagamento.show();
   }
 
   fetch(`/api/financeiro/${id}`, {
@@ -311,65 +452,72 @@ function abrirDetalhesPagar(id) {
 
       body.innerHTML = `
         <div class="row g-3">
-          <div class="col-12 col-md-6"><strong>Fornecedor:</strong> ${dados.pessoa_nome || '-'}</div>
-          <div class="col-12 col-md-6"><strong>Documento:</strong> ${dados.documento || '-'}</div>
-          <div class="col-12 col-md-6"><strong>Valor:</strong> ${formatarMoeda(dados.valor)}</div>
-          <div class="col-12 col-md-6"><strong>Data Movimento:</strong> ${formatarData(dados.data_movimento)}</div>
-          <div class="col-12 col-md-6"><strong>Vencimento:</strong> ${dados.vencimento ? formatarData(dados.vencimento) : '-'}</div>
-          <div class="col-12 col-md-6"><strong>Status:</strong> ${formatarStatusBadge(dados.status)}</div>
-          <div class="col-12 col-md-6"><strong>Origem:</strong> ${dados.origem || 'manual'}</div>
+          <div class="col-12 col-md-6"><strong>Fornecedor:</strong> ${escapeHtmlFinanceiro(dados.pessoa_nome || '-')}</div>
+          <div class="col-12 col-md-6"><strong>Documento:</strong> ${escapeHtmlFinanceiro(dados.documento || '-')}</div>
+          <div class="col-12 col-md-6"><strong>Valor:</strong> ${formatarMoedaPagar(dados.valor)}</div>
+          <div class="col-12 col-md-6"><strong>Data Movimento:</strong> ${formatarDataPagar(dados.data_movimento)}</div>
+          <div class="col-12 col-md-6"><strong>Vencimento:</strong> ${dados.vencimento ? formatarDataPagar(dados.vencimento) : '-'}</div>
+          <div class="col-12 col-md-6"><strong>Status:</strong> ${formatarStatusBadgeSeguro(dados.status)}</div>
+          <div class="col-12 col-md-6"><strong>Origem:</strong> ${escapeHtmlFinanceiro(dados.origem || 'manual')}</div>
           <div class="col-12 col-md-6"><strong>Parcela:</strong> ${dados.numero_parcela || '-'} / ${dados.total_parcelas || '-'}</div>
           <div class="col-12">
             <strong>Descrição:</strong>
-            <p class="mb-1">${dados.descricao || '-'}</p>
+            <p class="mb-1">${escapeHtmlFinanceiro(dados.descricao || '-')}</p>
           </div>
           <div class="col-12">
             <strong>Observação:</strong>
-            <p class="mb-0">${dados.observacao || '-'}</p>
+            <p class="mb-0">${escapeHtmlFinanceiro(dados.observacao || '-')}</p>
           </div>
         </div>
       `;
     })
     .catch(error => {
       console.error('Erro ao carregar detalhes da conta a pagar:', error);
-      body.innerHTML = `<div class="text-danger">Não foi possível carregar os detalhes. ${error.message || ''}</div>`;
+      body.innerHTML = `<div class="text-danger">Não foi possível carregar os detalhes. ${escapeHtmlFinanceiro(error.message || '')}</div>`;
     });
-}
-
-function editarContaPagar(id) {
-  alert(`Editar conta a pagar ${id} - Em desenvolvimento`);
-}
-
-function remarcarVencimento(id) {
-  alert(`Remarcar vencimento ${id} - Em desenvolvimento`);
-}
-
-function excluirContaPagar(id) {
-  if (confirm('Tem certeza que deseja excluir esta conta a pagar?')) {
-    alert(`Excluir conta a pagar ${id} - Em desenvolvimento`);
-  }
-}
-
-function anexarComprovante(id) {
-  alert(`Anexar comprovante ${id} - Em desenvolvimento`);
 }
 
 function coletarFiltrosPagar(periodo) {
   return {
-    fornecedor: document.getElementById('filtroFornecedorPagar').value.trim(),
-    status: document.getElementById('filtroStatusPagar').value,
-    dataInicio: periodo.dataInicio,
-    dataFim: periodo.dataFim
+    fornecedor: document.getElementById('filtroFornecedorPagar')?.value.trim() || '',
+    status: document.getElementById('filtroStatusPagar')?.value || 'todos',
+    dataInicio: periodo?.dataInicio || '',
+    dataFim: periodo?.dataFim || ''
   };
 }
 
-function formatarData(data) {
-  return new Date(data).toLocaleDateString('pt-BR');
+function formatarDataPagar(data) {
+  if (!data) return '-';
+  const d = new Date(data);
+  if (Number.isNaN(d.getTime())) return data;
+  return d.toLocaleDateString('pt-BR');
 }
 
-function formatarMoeda(valor) {
+function formatarMoedaPagar(valor) {
   return new Intl.NumberFormat('pt-BR', {
     style: 'currency',
     currency: 'BRL'
-  }).format(valor);
+  }).format(Number(valor || 0));
 }
+
+function formatarStatusBadgeSeguro(status) {
+  const texto = escapeHtmlFinanceiro(status || '-');
+  return `<span class="status-${texto.toLowerCase()}">${texto}</span>`;
+}
+
+function escapeHtmlFinanceiro(texto) {
+  return String(texto || '')
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;')
+    .replace(/'/g, '&#039;');
+}
+
+// Expor globalmente
+window.renderContasPagar = renderContasPagar;
+window.carregarContasPagar = carregarContasPagar;
+window.novaDespesa = novaDespesa;
+window.abrirDetalhesPagar = abrirDetalhesPagar;
+window.pagarConta = pagarConta;
+window.filtrarPagar = filtrarPagar;

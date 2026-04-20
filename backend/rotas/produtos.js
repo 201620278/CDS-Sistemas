@@ -59,6 +59,85 @@ router.get('/:id/historico-precos', (req, res) => {
   });
 });
 
+// Relatório de estoque de produtos com data de compra
+router.get('/relatorio-estoque', (req, res) => {
+  const { inicio, fim } = req.query;
+
+  const filtrosSubconsulta = [];
+  const paramsSubconsulta = [];
+  const filtrosExists = [];
+  const paramsExists = [];
+
+  if (inicio) {
+    filtrosSubconsulta.push('c2.data_compra >= ?');
+    paramsSubconsulta.push(inicio);
+
+    filtrosExists.push('c3.data_compra >= ?');
+    paramsExists.push(inicio);
+  }
+
+  if (fim) {
+    filtrosSubconsulta.push('c2.data_compra <= ?');
+    paramsSubconsulta.push(fim);
+
+    filtrosExists.push('c3.data_compra <= ?');
+    paramsExists.push(fim);
+  }
+
+  const whereExists = filtrosExists.length
+    ? `
+      WHERE EXISTS (
+        SELECT 1
+        FROM compras c3
+        INNER JOIN compras_itens ci3 ON ci3.compra_id = c3.id
+        WHERE ci3.produto_id = p.id
+          AND ${filtrosExists.join(' AND ')}
+      )
+    `
+    : '';
+
+  const filtrosUltimaCompra = filtrosSubconsulta.length
+    ? ` AND ${filtrosSubconsulta.join(' AND ')}`
+    : '';
+
+  const sql = `
+    SELECT
+      p.*,
+      c.nome AS categoria_nome,
+      s.nome AS subcategoria_nome,
+      (
+        SELECT MAX(c2.data_compra)
+        FROM compras c2
+        INNER JOIN compras_itens ci2 ON ci2.compra_id = c2.id
+        WHERE ci2.produto_id = p.id
+        ${filtrosUltimaCompra}
+      ) AS ultima_compra_data
+    FROM produtos p
+    LEFT JOIN categorias c ON c.id = p.categoria_id
+    LEFT JOIN subcategorias s ON s.id = p.subcategoria_id
+    ${whereExists}
+    ORDER BY p.nome ASC
+  `;
+
+  const params = [...paramsSubconsulta, ...paramsExists];
+
+  db.all(sql, params, (err, rows) => {
+    if (err) {
+      console.error('Erro ao gerar relatório de estoque:', err.message);
+      return res.status(500).json({ error: err.message });
+    }
+
+    const produtos = (rows || []).map(p => ({
+      ...p,
+      categoria: p.categoria_nome || p.categoria || '',
+      subcategoria: p.subcategoria_nome || p.subcategoria || '',
+      ultima_compra_data: p.ultima_compra_data || null
+    }));
+
+    res.json(produtos);
+  });
+});
+
 // Buscar produto por ID trazendo o nome da categoria
 // Buscar produto por ID trazendo o nome da categoria e subcategoria
 router.get('/:id', (req, res) => {

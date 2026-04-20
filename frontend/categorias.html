@@ -1,15 +1,26 @@
 <!-- Página de Categorias -->
 <div class="container mt-4">
   <h2>Categorias</h2>
-  <div class="mb-3 d-flex justify-content-end gap-2">
-    <button class="btn btn-success" data-bs-toggle="modal" data-bs-target="#modal-categoria">Nova Categoria</button>
-    <button class="btn btn-primary" data-bs-toggle="modal" data-bs-target="#modal-subcategoria">Nova Subcategoria</button>
+  <div class="mb-3 d-flex justify-content-between align-items-center gap-2">
+    <div>
+      <label for="filtro-tipo-categoria" class="form-label">Filtrar por tipo:</label>
+      <select id="filtro-tipo-categoria" class="form-select" style="width: auto; display: inline-block;">
+        <option value="">Todos</option>
+        <option value="produto">Produto</option>
+        <option value="despesa">Despesa</option>
+      </select>
+    </div>
+    <div class="d-flex gap-2">
+      <button class="btn btn-success" data-bs-toggle="modal" data-bs-target="#modal-categoria">Nova Categoria</button>
+      <button class="btn btn-primary" data-bs-toggle="modal" data-bs-target="#modal-subcategoria">Nova Subcategoria</button>
+    </div>
   </div>
   <table class="table table-bordered table-hover">
     <thead>
       <tr>
         <th>ID</th>
         <th>Nome</th>
+        <th>Tipo</th>
         <th>Descrição</th>
         <th>Ações</th>
       </tr>
@@ -19,21 +30,23 @@
     </tbody>
   </table>
 
-  <hr>
-  <h4>Subcategorias</h4>
-  <table class="table table-bordered table-hover">
-    <thead>
-      <tr>
-        <th>ID</th>
-        <th>Nome</th>
-        <th>Categoria</th>
-        <th>Ações</th>
-      </tr>
-    </thead>
-    <tbody id="subcategorias-tbody">
-      <!-- Subcategorias serão carregadas aqui -->
-    </tbody>
-  </table>
+  <div id="subcategorias-section">
+    <hr>
+    <h4>Subcategorias</h4>
+    <table class="table table-bordered table-hover">
+      <thead>
+        <tr>
+          <th>ID</th>
+          <th>Nome</th>
+          <th>Categoria</th>
+          <th>Ações</th>
+        </tr>
+      </thead>
+      <tbody id="subcategorias-tbody">
+        <!-- Subcategorias serão carregadas aqui -->
+      </tbody>
+    </table>
+  </div>
 </div>
 
 
@@ -55,6 +68,13 @@
         <div class="mb-3">
           <label for="categoria-descricao" class="form-label">Descrição</label>
           <input type="text" id="categoria-descricao" class="form-control">
+        </div>
+        <div class="mb-3">
+          <label for="categoria-tipo" class="form-label">Tipo</label>
+          <select id="categoria-tipo" class="form-select">
+            <option value="produto">Produto</option>
+            <option value="despesa">Despesa</option>
+          </select>
         </div>
       </div>
       <div class="modal-footer">
@@ -100,10 +120,35 @@
         atualizarSelectCategoriasSubcategoria();
       }
     });
+
+    // Listener para filtro de tipo de categoria
+    $('#filtro-tipo-categoria').on('change', function() {
+      const tipoSelecionado = $(this).val();
+      
+      // Esconder subcategorias se estiver selecionado "despesa"
+      if (tipoSelecionado === 'despesa') {
+        $('#subcategorias-section').hide();
+        // Desabilitar botão de nova subcategoria também
+        $('button[data-bs-target="#modal-subcategoria"]').prop('disabled', true);
+      } else {
+        $('#subcategorias-section').show();
+        // Habilitar botão de nova subcategoria
+        $('button[data-bs-target="#modal-subcategoria"]').prop('disabled', false);
+      }
+      
+      loadCategorias();
+    });
+
+    // Inicializar visibilidade das subcategorias
+    const tipoInicial = $('#filtro-tipo-categoria').val();
+    if (tipoInicial === 'despesa') {
+      $('#subcategorias-section').hide();
+      $('button[data-bs-target="#modal-subcategoria"]').prop('disabled', true);
+    }
   });
 
   function atualizarSelectCategoriasSubcategoria() {
-    categoriasAPI.listar().done(function(categorias) {
+    categoriasAPI.listar('produto').done(function(categorias) {
       let options = '';
       categorias.forEach(cat => {
         options += `<option value="${cat.id}">${cat.nome}</option>`;
@@ -120,7 +165,7 @@
 
   function loadSubcategorias() {
     // Buscar categorias para mapear id -> nome
-    categoriasAPI.listar().done(function(categorias) {
+    categoriasAPI.listar('produto').done(function(categorias) {
       const mapCat = {};
       categorias.forEach(cat => { mapCat[cat.id] = cat.nome; });
       subcategoriasAPI.listar().done(function(subcats) {

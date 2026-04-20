@@ -461,4 +461,86 @@ router.delete('/:id', (req, res) => {
   });
 });
 
+router.post('/parse-xml', upload.single('xml'), (req, res) => {
+  if (!req.file) {
+    return res.status(400).json({ error: 'Arquivo XML não enviado.' });
+  }
+
+  const xmlContent = req.file.buffer.toString('utf8');
+  const xml2js = require('xml2js');
+
+  xml2js.parseString(xmlContent, { explicitArray: false, ignoreAttrs: false }, (err, result) => {
+    if (err) {
+      return res.status(400).json({ error: 'Erro ao parsear XML: ' + err.message });
+    }
+
+    try {
+      const nfe = result.nfeProc?.NFe?.infNFe || result.NFe?.infNFe;
+      if (!nfe) {
+        return res.status(400).json({ error: 'XML não contém uma NF-e válida.' });
+      }
+
+      const ide = nfe.ide;
+      const emit = nfe.emit;
+      const dest = nfe.dest;
+      const transp = nfe.transp;
+      const infIntermed = nfe.infIntermed;
+      const infRespTec = nfe.infRespTec;
+      const det = Array.isArray(nfe.det) ? nfe.det : [nfe.det].filter(Boolean);
+      const total = nfe.total?.ICMSTot;
+      const transpInfo = nfe.transp;
+      const cobr = nfe.cobr;
+      const pag = nfe.pag;
+      const infAdic = nfe.infAdic;
+      const infNFeSupl = nfe.infNFeSupl;
+
+      const chaveAcesso = nfe.$?.Id?.replace('NFe', '') || '';
+
+      const parsed = {
+        chave_acesso: chaveAcesso,
+        numero_nf: ide?.nNF || '',
+        serie_nf: ide?.serie || '',
+        modelo_nf: ide?.mod || '55',
+        data_emissao: ide?.dhEmi ? moment(ide.dhEmi).format('YYYY-MM-DD') : '',
+        data_entrada: ide?.dhSaiEnt ? moment(ide.dhSaiEnt).format('YYYY-MM-DD') : '',
+        fornecedor: emit?.xNome || '',
+        fornecedor_cnpj: emit?.CNPJ || '',
+        fornecedor_endereco: [
+          emit?.enderEmit?.xLgr,
+          emit?.enderEmit?.nro,
+          emit?.enderEmit?.xBairro,
+          emit?.enderEmit?.xMun,
+          emit?.enderEmit?.UF,
+          emit?.enderEmit?.CEP
+        ].filter(Boolean).join(', '),
+        valor_produtos: parseFloat(total?.vProd || 0),
+        valor_desconto: parseFloat(total?.vDesc || 0),
+        valor_frete: parseFloat(total?.vFrete || 0),
+        valor_outras_despesas: parseFloat(total?.vOutro || 0),
+        valor_total_nota: parseFloat(total?.vNF || 0),
+        observacao: infAdic?.infCpl || '',
+        itens: det.map(d => {
+          const prod = d.prod;
+          const imposto = d.imposto;
+          return {
+            produto_nome: prod?.xProd || '',
+            codigo_barras: prod?.cEAN || prod?.cEANTrib || '',
+            ncm: prod?.NCM || '',
+            unidade: prod?.uCom || 'UN',
+            quantidade: parseFloat(prod?.qCom || 0),
+            preco_unitario: parseFloat(prod?.vUnCom || 0),
+            subtotal: parseFloat(prod?.vProd || 0),
+            margem_lucro: 30, // padrão
+            preco_venda_sugerido: parseFloat(prod?.vUnCom || 0) * 1.3
+          };
+        })
+      };
+
+      res.json(parsed);
+    } catch (parseErr) {
+      res.status(400).json({ error: 'Erro ao extrair dados do XML: ' + parseErr.message });
+    }
+  });
+});
+
 module.exports = router;

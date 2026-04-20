@@ -64,6 +64,8 @@ function aplicarAlteracaoSegura(tabela, sql) {
 }
 
 function aplicarAlteracoesPosCriacao() {
+  aplicarAlteracaoSegura('categorias', `ALTER TABLE categorias ADD COLUMN tipo TEXT DEFAULT 'produto'`);
+
   const alteracoesProdutos = [
     `ALTER TABLE produtos ADD COLUMN categoria_id INTEGER`,
     `ALTER TABLE produtos ADD COLUMN subcategoria_id INTEGER`,
@@ -141,6 +143,7 @@ function criarTabelas() {
         id INTEGER PRIMARY KEY AUTOINCREMENT,
         nome TEXT NOT NULL UNIQUE,
         descricao TEXT,
+        tipo TEXT NOT NULL DEFAULT 'produto',
         ativo INTEGER DEFAULT 1,
         created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
         updated_at DATETIME DEFAULT CURRENT_TIMESTAMP
@@ -465,6 +468,7 @@ function inicializarBanco() {
     aplicarAlteracoesPosCriacao();
     inserirConfiguracoesPadrao();
     criarUsuarioAdminPadrao();
+    garantirCategoriasPadraoDespesa();
   });
 }
 
@@ -596,6 +600,49 @@ function garantirColunasFinanceiro() {
         SET vencimento = COALESCE(vencimento, data_movimento)
         WHERE vencimento IS NULL
       `);
+    });
+  });
+}
+
+function garantirCategoriasPadraoDespesa() {
+  const categoriasPadrao = [
+    'Aluguel',
+    'Água',
+    'Luz',
+    'Internet',
+    'Impostos e Taxas',
+    'Material de Uso Interno',
+    'Outras Despesas'
+  ];
+
+  categoriasPadrao.forEach((nome) => {
+    db.get('SELECT id FROM categorias WHERE LOWER(nome) = LOWER(?)', [nome], (err, row) => {
+      if (err) {
+        console.error('Erro ao verificar categoria padrão de despesa:', err.message);
+        return;
+      }
+
+      if (!row) {
+        db.run(
+          'INSERT INTO categorias (nome, descricao, tipo) VALUES (?, ?, ?)',
+          [nome, `Categoria padrão de despesa: ${nome}`, 'despesa'],
+          (insertErr) => {
+            if (insertErr) {
+              console.error(`Erro ao inserir categoria padrão "${nome}":`, insertErr.message);
+            }
+          }
+        );
+      } else {
+        db.run(
+          'UPDATE categorias SET tipo = ? WHERE id = ? AND (tipo IS NULL OR tipo = "")',
+          ['despesa', row.id],
+          (updateErr) => {
+            if (updateErr) {
+              console.error(`Erro ao ajustar tipo da categoria "${nome}":`, updateErr.message);
+            }
+          }
+        );
+      }
     });
   });
 }

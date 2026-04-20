@@ -1138,20 +1138,30 @@ router.post('/receber/agrupado/:clienteId/pagamento-parcial', async (req, res) =
     if (valorPago <= 0) {
       return res.status(400).json({ success: false, error: 'Valor deve ser maior que zero' });
     }
+
     if (!data_pagamento) {
       return res.status(400).json({ success: false, error: 'Data do pagamento é obrigatória' });
     }
 
-    const cliente = await dbGetAsync('SELECT id FROM clientes WHERE id = ?', [clienteId]);
+    const cliente = await dbGetAsync('SELECT id, nome FROM clientes WHERE id = ?', [clienteId]);
     if (!cliente) {
       return res.status(404).json({ success: false, error: 'Cliente não encontrado' });
     }
 
     const contas = await dbAllAsync(`
-      SELECT id, venda_id, valor_restante, data_vencimento
-      FROM contas_receber
-      WHERE cliente_id = ? AND status IN ('aberto','parcial')
-      ORDER BY data_vencimento ASC, id ASC
+      SELECT
+        cr.id,
+        cr.venda_id,
+        cr.valor_parcela,
+        cr.valor_restante,
+        cr.data_vencimento,
+        cr.numero_parcela,
+        cr.total_parcelas,
+        v.codigo AS numero_venda
+      FROM contas_receber cr
+      LEFT JOIN vendas v ON v.id = cr.venda_id
+      WHERE cr.cliente_id = ? AND cr.status IN ('aberto','parcial')
+      ORDER BY cr.data_vencimento ASC, cr.id ASC
     `, [clienteId]);
 
     if (!contas.length) {
@@ -1159,6 +1169,7 @@ router.post('/receber/agrupado/:clienteId/pagamento-parcial', async (req, res) =
     }
 
     const totalAberto = contas.reduce((sum, conta) => sum + parseNumber(conta.valor_restante), 0);
+
     if (valorPago > totalAberto) {
       return res.status(400).json({
         success: false,
@@ -1166,28 +1177,29 @@ router.post('/receber/agrupado/:clienteId/pagamento-parcial', async (req, res) =
       });
     }
 
-    await new Promise((resolve, reject) => {
+    const pagamentosRealizados = await new Promise((resolve, reject) => {
       db.serialize(() => {
         db.run('BEGIN TRANSACTION');
-        let valorRestante = valorPago;
-        const pagamentosRealizados = [];
+
+        let valorRestantePagamento = valorPago;
+        const pagamentos = [];
 
         const processarConta = (index) => {
-          if (index >= contas.length || valorRestante <= 0) {
+          if (index >= contas.length || valorRestantePagamento <= 0) {
             db.run('COMMIT', (err) => {
               if (err) {
                 db.run('ROLLBACK');
                 reject(err);
               } else {
-                resolve(pagamentosRealizados);
+                resolve(pagamentos);
               }
             });
             return;
           }
 
           const conta = contas[index];
-          const valorConta = parseNumber(conta.valor_restante);
-          const valorAbater = Math.min(valorConta, valorRestante);
+          const saldoAtualConta = parseNumber(conta.valor_restante);
+          const valorAbater = Math.min(saldoAtualConta, valorRestantePagamento);
 
           if (valorAbater <= 0) {
             processarConta(index + 1);
@@ -1196,7 +1208,12 @@ router.post('/receber/agrupado/:clienteId/pagamento-parcial', async (req, res) =
 
           db.run(`
             INSERT INTO contas_receber_pagamentos (
-              conta_receber_id, cliente_id, valor_pago, data_pagamento, forma_pagamento, observacao
+              conta_receber_id,
+              cliente_id,
+              valor_pago,
+              data_pagamento,
+              forma_pagamento,
+              observacao
             ) VALUES (?, ?, ?, ?, ?, ?)
           `, [
             conta.id,
@@ -1212,46 +1229,148 @@ router.post('/receber/agrupado/:clienteId/pagamento-parcial', async (req, res) =
               return;
             }
 
-            const novoSaldo = valorConta - valorAbater;
+            const novoSaldo = saldoAtualConta - valorAbater;
             const novoStatus = novoSaldo <= 0 ? 'recebido' : 'parcial';
-            const updateDataPagamento = novoSaldo <= 0 ? data_pagamento : null;
+            const dataPagamentoFinal = novoSaldo <= 0 ? data_pagamento : null;
 
             db.run(`
               UPDATE contas_receber
               SET valor_restante = ?, status = ?, data_pagamento = ?
               WHERE id = ?
-            `, [novoSaldo, novoStatus, updateDataPagamento, conta.id], (err) => {
+            `, [novoSaldo, novoStatus, dataPagamentoFinal, conta.id], (err) => {
               if (err) {
                 db.run('ROLLBACK');
                 reject(err);
                 return;
               }
 
-              pagamentosRealizados.push({
-                conta_receber_id: conta.id,
-                venda_id: conta.venda_id,
-                valor_pago: valorAbater,
-                saldo_restante: novoSaldo,
-                status: novoStatus
-              });
+              const descricaoFinanceiro = `Recebimento venda #${conta.numero_venda || conta.venda_id} - Parcela ${conta.numero_parcela || '-'} / ${conta.total_parcelas || '-'}`;
 
-              valorRestante -= valorAbater;
-              processarConta(index + 1);
+              db.get(`
+                SELECT id
+                FROM financeiro
+                WHERE tipo = 'receita'
+                  AND referencia_tipo = 'venda'
+                  AND referencia_id = ?
+                  AND numero_parcela = ?
+                ORDER BY id DESC
+                LIMIT 1
+              `, [conta.venda_id, conta.numero_parcela || null], (err, movFinanceiro) => {
+                if (err) {
+                  db.run('ROLLBACK');
+                  reject(err);
+                  return;
+                }
+
+                if (movFinanceiro) {
+                  db.run(`
+                    UPDATE financeiro
+                    SET
+                      status = ?,
+                      forma_pagamento = ?,
+                      observacao = ?,
+                      pessoa_nome = ?,
+                      baixado_em = CASE WHEN ? = 'recebido' THEN ? ELSE NULL END
+                    WHERE id = ?
+                  `, [
+                    novoStatus,
+                    forma_pagamento || 'dinheiro',
+                    observacao || `Pagamento parcial registrado em ${data_pagamento}`,
+                    cliente.nome || null,
+                    novoStatus,
+                    data_pagamento,
+                    movFinanceiro.id
+                  ], (err) => {
+                    if (err) {
+                      db.run('ROLLBACK');
+                      reject(err);
+                      return;
+                    }
+
+                    pagamentos.push({
+                      conta_receber_id: conta.id,
+                      venda_id: conta.venda_id,
+                      valor_pago: valorAbater,
+                      saldo_restante: novoSaldo,
+                      status: novoStatus
+                    });
+
+                    valorRestantePagamento -= valorAbater;
+                    processarConta(index + 1);
+                  });
+                } else {
+                  db.run(`
+                    INSERT INTO financeiro (
+                      tipo,
+                      descricao,
+                      valor,
+                      data_movimento,
+                      categoria,
+                      forma_pagamento,
+                      referencia_id,
+                      referencia_tipo,
+                      status,
+                      origem,
+                      documento,
+                      vencimento,
+                      numero_parcela,
+                      total_parcelas,
+                      venda_id,
+                      pessoa_nome,
+                      observacao,
+                      baixado_em
+                    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                  `, [
+                    'receita',
+                    descricaoFinanceiro,
+                    parseNumber(conta.valor_parcela),
+                    data_pagamento,
+                    'vendas',
+                    forma_pagamento || 'dinheiro',
+                    conta.venda_id,
+                    'venda',
+                    novoStatus,
+                    'duplicata',
+                    null,
+                    conta.data_vencimento,
+                    conta.numero_parcela || null,
+                    conta.total_parcelas || null,
+                    conta.venda_id,
+                    cliente.nome || null,
+                    observacao || `Pagamento parcial registrado em ${data_pagamento}`,
+                    novoStatus === 'recebido' ? data_pagamento : null
+                  ], (err) => {
+                    if (err) {
+                      db.run('ROLLBACK');
+                      reject(err);
+                      return;
+                    }
+
+                    pagamentos.push({
+                      conta_receber_id: conta.id,
+                      venda_id: conta.venda_id,
+                      valor_pago: valorAbater,
+                      saldo_restante: novoSaldo,
+                      status: novoStatus
+                    });
+
+                    valorRestantePagamento -= valorAbater;
+                    processarConta(index + 1);
+                  });
+                }
+              });
             });
           });
         };
 
         processarConta(0);
       });
-    }).then((pagamentosRealizados) => {
-      res.json({
-        success: true,
-        message: 'Pagamento parcial realizado com sucesso',
-        pagamentosRealizados
-      });
-    }).catch((err) => {
-      console.error('Erro no pagamento parcial:', err);
-      res.status(500).json({ success: false, error: err.message });
+    });
+
+    res.json({
+      success: true,
+      message: 'Pagamento parcial realizado com sucesso',
+      pagamentosRealizados
     });
   } catch (err) {
     console.error('Erro ao processar pagamento parcial:', err);

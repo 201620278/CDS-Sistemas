@@ -63,7 +63,8 @@ function loadProdutos() {
         url: `${API_URL}/produtos`,
         method: 'GET',
         success: function (produtos) {
-            renderProdutos(produtos || []);
+            window.produtosList = produtos || [];
+            renderProdutos(window.produtosList);
         },
         error: function () {
             $('#page-content').html('<div class="alert alert-danger">Erro ao carregar produtos!</div>');
@@ -71,6 +72,270 @@ function loadProdutos() {
     });
 }
 window.loadProdutos = loadProdutos;
+
+function showRelatorioEstoqueProdutos() {
+    carregarRelatorioEstoqueProdutos(false);
+}
+
+function toggleRelatorioProdutosMostrarTodos() {
+    const exibirTodosAtual = $('#relatorio-estoque-modal').data('exibir-todos') === true || $('#relatorio-estoque-modal').data('exibir-todos') === 'true';
+    const inicio = $('#relatorio-data-inicio').val() || '';
+    const fim = $('#relatorio-data-fim').val() || '';
+    carregarRelatorioEstoqueProdutos(!exibirTodosAtual, inicio, fim);
+}
+
+function parseRelatorioData(valor) {
+    if (!valor) return null;
+    const data = new Date(`${valor}T00:00:00`);
+    return Number.isNaN(data.getTime()) ? null : data;
+}
+
+function isRelatorioDataDentroDoIntervalo(dataString, inicio, fim) {
+    if (!dataString) return false;
+
+    const data = new Date(dataString);
+    if (Number.isNaN(data.getTime())) return false;
+
+    if (inicio && data < inicio) return false;
+
+    if (fim) {
+        const fimDoDia = new Date(fim.getTime());
+        fimDoDia.setHours(23, 59, 59, 999);
+        if (data > fimDoDia) return false;
+    }
+
+    return true;
+}
+
+function formatarUltimaCompraRelatorio(valor) {
+    if (!valor) return '-';
+    return formatDate(valor);
+}
+
+function printRelatorioEstoqueProdutos() {
+    const $modal = $('#relatorio-estoque-modal');
+    if (!$modal.length) return;
+
+    const title = 'Relatório de Estoque';
+    const bodyHtml = $modal.find('.modal-body').html();
+    const css = `
+        <style>
+            body { font-family: Arial, sans-serif; color: #222; padding: 20px; }
+            h1 { font-size: 20px; margin-bottom: 20px; }
+            table { width: 100%; border-collapse: collapse; margin-top: 20px; }
+            th, td { border: 1px solid #ccc; padding: 8px; text-align: left; }
+            th { background: #f8f9fa; }
+            .badge { display: inline-block; padding: 0.35em 0.65em; border-radius: 0.35rem; }
+            .badge.bg-danger { background-color: #dc3545; color: white; }
+            .badge.bg-warning { background-color: #ffc107; color: #212529; }
+            .badge.bg-secondary { background-color: #6c757d; color: white; }
+            .no-print { display: none !important; }
+        </style>
+    `;
+
+    const printWindow = window.open('', '_blank');
+    if (!printWindow) return;
+
+    printWindow.document.write(`
+        <!DOCTYPE html>
+        <html>
+            <head>
+                <title>${title}</title>
+                ${css}
+            </head>
+            <body>
+                <h1>${title}</h1>
+                ${bodyHtml}
+            </body>
+        </html>
+    `);
+    printWindow.document.close();
+    printWindow.focus();
+    printWindow.print();
+}
+
+function carregarRelatorioEstoqueProdutos(exibirTodos = false, filtroInicio = '', filtroFim = '') {
+    const params = new URLSearchParams();
+
+    if (filtroInicio) params.append('inicio', filtroInicio);
+    if (filtroFim) params.append('fim', filtroFim);
+
+    $.ajax({
+        url: `${API_URL}/produtos/relatorio-estoque?${params.toString()}`,
+        method: 'GET',
+        headers: {
+            Authorization: 'Bearer ' + (localStorage.getItem('token') || '')
+        },
+        success: function(produtos) {
+            renderRelatorioEstoqueProdutos(produtos || [], exibirTodos, filtroInicio, filtroFim);
+        },
+        error: function(xhr) {
+            const erro = xhr.responseJSON?.error || 'Erro ao carregar relatório de estoque.';
+            showNotification(erro, 'danger');
+        }
+    });
+}
+
+function renderRelatorioEstoqueProdutos(produtos, exibirTodos = false, filtroInicio = '', filtroFim = '') {
+    produtos = Array.isArray(produtos) ? produtos : [];
+    const inicio = parseRelatorioData(filtroInicio);
+    const fim = parseRelatorioData(filtroFim);
+
+    let produtosFiltrados = produtos;
+
+    if (inicio || fim) {
+        produtosFiltrados = produtos.filter(p => isRelatorioDataDentroDoIntervalo(p.ultima_compra_data, inicio, fim));
+    }
+
+    const itensEstoqueMinimo = produtosFiltrados.filter(p => {
+        const atual = Number(p.estoque_atual || 0);
+        const minimo = Number(p.estoque_minimo || 0);
+        return minimo > 0 && atual <= minimo;
+    });
+
+    const itensProximosDoMinimo = produtosFiltrados.filter(p => {
+        const atual = Number(p.estoque_atual || 0);
+        const minimo = Number(p.estoque_minimo || 0);
+        return minimo > 0 && atual > minimo && atual <= Math.ceil(minimo * 1.2);
+    });
+
+    const produtosExibidos = exibirTodos
+        ? produtosFiltrados
+        : [...itensEstoqueMinimo, ...itensProximosDoMinimo];
+
+    const valorTotalFiscal = produtosFiltrados.reduce((sum, p) => {
+        return sum + (Number(p.estoque_atual || 0) * Number(p.preco_compra || 0));
+    }, 0);
+
+    const tituloModo = exibirTodos
+        ? 'Todos os produtos'
+        : 'Estoque mínimo e próximos do mínimo';
+
+    const filtroLegenda = exibirTodos
+        ? `Mostrando todos os produtos (${produtosFiltrados.length}).`
+        : `Estoque baixo: ${itensEstoqueMinimo.length}, Próximo do mínimo: ${itensProximosDoMinimo.length}.`;
+
+    const filtroDatasTexto = (inicio || fim)
+        ? `Filtro aplicado pela data da última compra: ${filtroInicio || 'início não informado'} até ${filtroFim || 'fim não informado'}.`
+        : 'Nenhum filtro de data aplicado.';
+
+    const modalHtml = `
+        <div class="modal fade" id="relatorio-estoque-modal" tabindex="-1" data-exibir-todos="${exibirTodos}">
+            <div class="modal-dialog modal-xl modal-dialog-scrollable">
+                <div class="modal-content">
+                    <div class="modal-header">
+                        <h5 class="modal-title">Relatório de Estoque</h5>
+                        <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Fechar"></button>
+                    </div>
+                    <div class="modal-body">
+                        <div class="row g-3 mb-3 no-print">
+                            <div class="col-md-3">
+                                <label class="form-label">Data início</label>
+                                <input type="date" id="relatorio-data-inicio" class="form-control" value="${filtroInicio || ''}">
+                            </div>
+                            <div class="col-md-3">
+                                <label class="form-label">Data fim</label>
+                                <input type="date" id="relatorio-data-fim" class="form-control" value="${filtroFim || ''}">
+                            </div>
+                            <div class="col-md-6 d-flex align-items-end gap-2">
+                                <button type="button" class="btn btn-primary" onclick="carregarRelatorioEstoqueProdutos(${exibirTodos}, $('#relatorio-data-inicio').val(), $('#relatorio-data-fim').val())">
+                                    Aplicar filtro
+                                </button>
+                                <button type="button" class="btn btn-outline-secondary" onclick="carregarRelatorioEstoqueProdutos(${exibirTodos})">
+                                    Limpar filtro
+                                </button>
+                                <button type="button" class="btn btn-success" onclick="printRelatorioEstoqueProdutos()">
+                                    Imprimir relatório
+                                </button>
+                            </div>
+                        </div>
+
+                        <div class="mb-3">
+                            <strong>${tituloModo}</strong>
+                            <div class="text-muted">${filtroLegenda}</div>
+                            <div class="text-muted">${filtroDatasTexto}</div>
+                            <div class="text-muted">Valor fiscal total do estoque: ${formatCurrency(valorTotalFiscal)}</div>
+                        </div>
+
+                        <div class="table-responsive">
+                            <table class="table table-striped table-hover">
+                                <thead>
+                                    <tr>
+                                        <th>Produto</th>
+                                        <th>Categoria</th>
+                                        <th>Estoque</th>
+                                        <th>Mínimo</th>
+                                        <th>Última compra</th>
+                                        <th>Total em estoque</th>
+                                        <th>Status</th>
+                                    </tr>
+                                </thead>
+                                <tbody>
+                                    ${produtosExibidos.length === 0 ? `
+                                        <tr>
+                                            <td colspan="7" class="text-center">
+                                                Nenhum produto ${exibirTodos ? 'cadastrado' : 'com estoque baixo ou próximo do mínimo'}.
+                                            </td>
+                                        </tr>
+                                    ` : produtosExibidos.map(p => {
+                                        const estoqueAtual = Number(p.estoque_atual || 0);
+                                        const estoqueMinimo = Number(p.estoque_minimo || 0);
+                                        const precoCompra = Number(p.preco_compra || 0);
+                                        const totalItem = estoqueAtual * precoCompra;
+
+                                        const status = estoqueAtual <= estoqueMinimo
+                                            ? 'Baixo'
+                                            : estoqueAtual <= Math.ceil(estoqueMinimo * 1.2)
+                                                ? 'Próximo do mínimo'
+                                                : 'OK';
+
+                                        const badgeClass = estoqueAtual <= estoqueMinimo
+                                            ? 'badge bg-danger'
+                                            : estoqueAtual <= Math.ceil(estoqueMinimo * 1.2)
+                                                ? 'badge bg-warning text-dark'
+                                                : 'badge bg-secondary';
+
+                                        return `
+                                            <tr>
+                                                <td>${escapeHtml(p.nome || '-')}</td>
+                                                <td>${escapeHtml(p.categoria || '-')}</td>
+                                                <td>${estoqueAtual}</td>
+                                                <td>${estoqueMinimo}</td>
+                                                <td>${formatarUltimaCompraRelatorio(p.ultima_compra_data)}</td>
+                                                <td>${formatCurrency(totalItem)}</td>
+                                                <td><span class="${badgeClass}">${status}</span></td>
+                                            </tr>
+                                        `;
+                                    }).join('')}
+                                </tbody>
+                            </table>
+                        </div>
+                    </div>
+
+                    <div class="modal-footer no-print">
+                        <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Fechar</button>
+                        <button type="button" class="btn btn-primary" onclick="toggleRelatorioProdutosMostrarTodos()">
+                            ${exibirTodos ? 'Mostrar apenas estoque crítico' : 'Mostrar todos produtos'}
+                        </button>
+                    </div>
+                </div>
+            </div>
+        </div>
+    `;
+
+    $('#modal-container').html(modalHtml);
+
+    const modalEl = document.getElementById('relatorio-estoque-modal');
+    const modal = new bootstrap.Modal(modalEl);
+
+    modalEl.addEventListener('hidden.bs.modal', function () {
+        modal.dispose();
+        $('#relatorio-estoque-modal').remove();
+        $('.modal-backdrop').remove();
+    });
+
+    modal.show();
+}
 
 
 // Renderiza listagem de produtos
@@ -89,6 +354,9 @@ function renderProdutos(produtos) {
                             id="buscaProduto"
                             placeholder="Buscar produto..."
                         >
+                        <button class="btn btn-secondary btn-sm me-2" onclick="showRelatorioEstoqueProdutos()">
+                            <i class="fas fa-chart-bar"></i> Relatório de estoque
+                        </button>
                         <button class="btn btn-primary btn-sm" onclick="showProdutoModal()">
                             <i class="fas fa-plus"></i> Novo Produto
                         </button>
@@ -390,13 +658,13 @@ function showProdutoModal(produto = null) {
 
     $('#modal-container').html(modalHtml);
 
-    inicializarCategoriasESubcategorias(produto, isEdit);
-    inicializarAutocompleteFornecedor();
-    inicializarCalculoPreco(produto, isEdit);
-
     $('#produtoModal').modal('show');
     // Remove botão flutuante se existir ao restaurar
     $('#btn-restaurar-produtoModal').remove();
+
+    inicializarCategoriasESubcategorias(produto, isEdit);
+    inicializarAutocompleteFornecedor();
+    inicializarCalculoPreco(produto, isEdit);
 
     // ...
 }
@@ -410,52 +678,63 @@ function inicializarCategoriasESubcategorias(produto, isEdit) {
         return;
     }
 
-    categoriasAPI.listar().done(function (categorias) {
-        // Carregar subcategorias para cada categoria
-        const promises = (categorias || []).map(cat =>
-            subcategoriasAPI.listarPorCategoria(cat.id).then(subcats => {
-                cat.subcategorias = subcats || [];
-                return cat;
-            })
-        );
-        Promise.all(promises).then(categoriasComSubs => {
-            window.categoriasSistema = categoriasComSubs;
-            let catOptions = '<option value="">Selecione</option>';
-            categoriasComSubs.forEach(cat => {
-                catOptions += `<option value="${cat.id}">${escapeHtml(cat.nome || '')}</option>`;
-            });
-            $('#categoria_id').html(catOptions);
-            if (isEdit && produto && produto.categoria_id) {
-                $('#categoria_id').val(String(produto.categoria_id));
-            }
-            function carregarSubs(catId, selectedSubId) {
-                if (!catId) {
-                    $('#subcategoria_id').html('<option value="">Selecione uma categoria</option>');
-                    return;
-                }
-                const cat = categoriasComSubs.find(c => String(c.id) === String(catId));
-                let subOptions = '<option value="">Nenhuma</option>';
-                (cat && cat.subcategorias ? cat.subcategorias : []).forEach(sub => {
-                    subOptions += `<option value="${sub.id}">${escapeHtml(sub.nome || '')}</option>`;
-                });
-                $('#subcategoria_id').html(subOptions);
-                if (typeof selectedSubId !== 'undefined' && selectedSubId !== null) {
-                    $('#subcategoria_id').val(String(selectedSubId));
-                }
-            }
-            $('#categoria_id').off('change').on('change', function () {
-                carregarSubs($(this).val());
-            });
-            if (isEdit && produto && typeof produto.categoria_id !== 'undefined' && produto.categoria_id !== null) {
-                let subId = '';
-                if (typeof produto.subcategoria_id !== 'undefined' && produto.subcategoria_id !== null && produto.subcategoria_id !== 'null') {
-                    subId = String(produto.subcategoria_id);
-                }
-                carregarSubs(produto.categoria_id, subId);
-            } else {
-                $('#subcategoria_id').html('<option value="">Selecione uma categoria</option>');
-            }
+    function renderCategorias(categoriasComSubs) {
+        window.categoriasSistema = categoriasComSubs;
+        let catOptions = '<option value="">Selecione</option>';
+        categoriasComSubs.forEach(cat => {
+            catOptions += `<option value="${cat.id}">${escapeHtml(cat.nome || '')}</option>`;
         });
+        $('#categoria_id').html(catOptions);
+        if (isEdit && produto && produto.categoria_id) {
+            $('#categoria_id').val(String(produto.categoria_id));
+        }
+
+        function carregarSubs(catId, selectedSubId) {
+            if (!catId) {
+                $('#subcategoria_id').html('<option value="">Selecione uma categoria</option>');
+                return;
+            }
+            const cat = categoriasComSubs.find(c => String(c.id) === String(catId));
+            let subOptions = '<option value="">Nenhuma</option>';
+            (cat && cat.subcategorias ? cat.subcategorias : []).forEach(sub => {
+                subOptions += `<option value="${sub.id}">${escapeHtml(sub.nome || '')}</option>`;
+            });
+            $('#subcategoria_id').html(subOptions);
+            if (typeof selectedSubId !== 'undefined' && selectedSubId !== null) {
+                $('#subcategoria_id').val(String(selectedSubId));
+            }
+        }
+
+        $('#categoria_id').off('change').on('change', function () {
+            carregarSubs($(this).val());
+        });
+
+        if (isEdit && produto && typeof produto.categoria_id !== 'undefined' && produto.categoria_id !== null) {
+            let subId = '';
+            if (typeof produto.subcategoria_id !== 'undefined' && produto.subcategoria_id !== null && produto.subcategoria_id !== 'null') {
+                subId = String(produto.subcategoria_id);
+            }
+            carregarSubs(produto.categoria_id, subId);
+        } else {
+            $('#subcategoria_id').html('<option value="">Selecione uma categoria</option>');
+        }
+    }
+
+    if (window.categoriasSistema && Array.isArray(window.categoriasSistema) && window.categoriasSistema.length > 0) {
+        renderCategorias(window.categoriasSistema);
+        return;
+    }
+
+    $.when(categoriasAPI.listar('produto'), subcategoriasAPI.listar()).done(function (categorias, subcategorias) {
+        categorias = categorias[0] || [];
+        subcategorias = subcategorias[0] || [];
+
+        const categoriasComSubs = (categorias || []).map(cat => ({
+            ...cat,
+            subcategorias: (subcategorias || []).filter(sub => String(sub.categoria_id) === String(cat.id))
+        }));
+
+        renderCategorias(categoriasComSubs);
     }).fail(function () {
         $('#categoria_id').html('<option value="">Erro ao carregar categorias</option>');
         $('#subcategoria_id').html('<option value="">Erro ao carregar subcategorias</option>');
@@ -623,11 +902,18 @@ function saveProduto() {
             $('#produtoModal').modal('hide');
             showNotification('Produto salvo com sucesso!', 'success');
             // Atualiza lista local se necessário
-            if (window.listaProdutos && Array.isArray(window.listaProdutos)) {
+            if (window.produtosList && Array.isArray(window.produtosList)) {
                 const produtoNormalizado = normalizarProduto(produtoSalvo, window.categoriasSistema || []);
-                window.listaProdutos.unshift(produtoNormalizado);
+                const indexExistente = window.produtosList.findIndex(p => String(p.id) === String(produtoNormalizado.id));
+
+                if (indexExistente >= 0) {
+                    window.produtosList[indexExistente] = produtoNormalizado;
+                } else {
+                    window.produtosList.unshift(produtoNormalizado);
+                }
+
                 if (typeof renderProdutos === 'function') {
-                    renderProdutos(window.listaProdutos);
+                    renderProdutos(window.produtosList);
                 }
             } else {
                 loadProdutos();
