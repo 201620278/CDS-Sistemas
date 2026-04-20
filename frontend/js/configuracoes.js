@@ -83,6 +83,36 @@ function renderConfiguracoes(configuracoes, usuarios) {
 
     configuracoes = configuracoes.filter(config => !fiscalConfigKeys.has(config.chave) && !backupConfigKeys.has(config.chave));
 
+    const ordemCamposEmpresa = [
+        'nome_empresa',
+        'nome_fantasia',
+        'razao_social',
+        'cnpj',
+        'ie',
+        'im',
+        'telefone',
+        'whatsapp',
+        'email',
+        'cep',
+        'logradouro',
+        'numero',
+        'complemento',
+        'bairro',
+        'cidade',
+        'uf',
+        'endereco'
+    ];
+
+    configuracoes.sort((a, b) => {
+        const ia = ordemCamposEmpresa.indexOf(a.chave);
+        const ib = ordemCamposEmpresa.indexOf(b.chave);
+
+        if (ia === -1 && ib === -1) return 0;
+        if (ia === -1) return 1;
+        if (ib === -1) return -1;
+        return ia - ib;
+    });
+
     const blocoUsuarios = usuarios && isAdminUser() ? `
         <div class="card mt-3">
             <div class="card-header">
@@ -132,14 +162,17 @@ function renderConfiguracoes(configuracoes, usuarios) {
             </div>
             <div class="card-body">
                 <form id="configForm">
-                    ${configuracoes.map(config => `
-                        <div class="mb-3">
-                            <label for="${config.chave}" class="form-label">${config.descricao || config.chave}</label>
-                            ${renderConfigField(config)}
-                            <small class="text-muted">${config.chave}</small>
-                        </div>
-                    `).join('')}
-                    
+                    <div class="row">
+                        ${configuracoes.map(config => `
+                            <div class="col-md-6 mb-3">
+                                <label for="${config.chave}" class="form-label fw-bold">
+                                    ${config.descricao || config.chave}
+                                </label>
+                                ${renderConfigField(config)}
+                            </div>
+                        `).join('')}
+                    </div>
+
                     <button type="button" class="btn btn-primary" onclick="saveConfiguracoes()">
                         <i class="fas fa-save"></i> Salvar Configurações
                     </button>
