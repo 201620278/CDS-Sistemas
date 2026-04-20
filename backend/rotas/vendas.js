@@ -107,7 +107,7 @@ router.post('/', (req, res) => {
   console.log('ENTROU NA ROTA DE EMISSAO NFC-E');
   console.log('DADOS RECEBIDOS PARA EMISSAO:', req.body);
 
-  const { cliente_id, total, desconto, forma_pagamento, itens, parcelas, primeiro_vencimento, forcar, emitir_fiscal } = req.body;
+  const { cliente_id, total, desconto, forma_pagamento, itens, parcelas, primeiro_vencimento, forcar, emitir_fiscal, valor_recebido } = req.body;
   const totalNum = Number(total);
   const formasPendentes = ['prazo'];
   const formaPagamentoNormalizada = String(forma_pagamento || '').toLowerCase().trim();
@@ -333,9 +333,9 @@ router.post('/', (req, res) => {
     db.serialize(() => {
       db.run('BEGIN TRANSACTION');
       db.run(`
-        INSERT INTO vendas (codigo, data_venda, cliente_id, total, desconto, forma_pagamento, status)
-        VALUES (?, ?, ?, ?, ?, ?, 'concluida')
-      `, [codigo, data_venda, cliente_id || null, totalNum, desconto || 0, forma_pagamento], function(err) {
+        INSERT INTO vendas (codigo, data_venda, cliente_id, total, desconto, forma_pagamento, status, valor_recebido)
+        VALUES (?, ?, ?, ?, ?, ?, 'concluida', ?)
+      `, [codigo, data_venda, cliente_id || null, totalNum, desconto || 0, forma_pagamento, valor_recebido || null], function(err) {
         if (err) {
           db.run('ROLLBACK');
           res.status(500).json({ error: err.message });

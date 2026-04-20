@@ -106,6 +106,7 @@ function bindEventosPDV() {
     $('#cancelar-venda').off('click').on('click', cancelarVendaAtual);
     $('#finalizar-venda').off('click').on('click', abrirModalDecisaoFiscal);
     $('#formaPagamento').off('change').on('change', aoAlterarFormaPagamento);
+    $('#formaPagamento').val('');
     $('#clienteBusca').off('input').on('input', async function () {
         const termo = $(this).val().trim();
         if (termo.length < 2) {
@@ -157,24 +158,58 @@ function bindEventosPDV() {
         input.trigger('focus');
     });
 
-    $('#desconto').off('input').on('input', calcularTotal);
+    $('#desconto').off('input').on('input', function() {
+        calcularTotal();
+        calcularTrocoPDV();
+    });
+
+    $('#valorRecebidoPDV').off('input').on('input', calcularTrocoPDV);
+
     aoAlterarFormaPagamento();
 }
 
 function aoAlterarFormaPagamento() {
     const formaPagamento = $('#formaPagamento').val();
     const boxCliente = $('#pdvClienteBox');
+    const boxDinheiro = $('#pdvDinheiroBox');
+
+    // Esconde tudo primeiro
+    boxCliente.hide();
+    boxDinheiro.hide();
+
+    if (formaPagamento === 'dinheiro') {
+        boxDinheiro.show();
+        calcularTrocoPDV();
+
+        setTimeout(() => {
+            const input = $('#valorRecebidoPDV');
+            if (input.length) input.trigger('focus');
+        }, 100);
+    }
 
     if (formaPagamento === 'prazo') {
         boxCliente.show();
+
         const hoje = new Date();
-        const primeiroVencimento = new Date(hoje.getFullYear(), hoje.getMonth() + 1, hoje.getDate());
+        const primeiroVencimento = new Date(
+            hoje.getFullYear(),
+            hoje.getMonth() + 1,
+            hoje.getDate()
+        );
+
         $('#data-recebimento-prazo').val(primeiroVencimento.toISOString().split('T')[0]);
     } else {
-        boxCliente.hide();
         removerClienteSelecionado();
         $('#data-recebimento-prazo').val('');
     }
+}
+
+function calcularTrocoPDV() {
+    const total = calcularTotalValor();
+    const recebido = parseFloat($('#valorRecebidoPDV').val()) || 0;
+    const troco = Math.max(0, recebido - total);
+
+    $('#trocoPDV').text(formatCurrency(troco));
 }
 
 function renderizarResultadosClientes(clientes) {
@@ -386,9 +421,11 @@ function calcularTotal() {
     const total = calcularTotalValor();
     $('#subtotal').text(formatCurrency(subtotal));
     $('#total').text(formatCurrency(total));
+
+    calcularTrocoPDV();
 }
 
-function abrirModalPagamento() {
+function abrirModalPagamento(onConfirm) {
     if (carrinho.length === 0) {
         showNotification('Adicione itens ao carrinho antes de finalizar a venda.', 'warning');
         return;
@@ -419,12 +456,22 @@ function abrirModalPagamento() {
                             <button type="button" class="payment-method-btn btn btn-outline-primary" data-pagamento="prazo">A Prazo</button>
                         </div>
 
-                        <div id="troco-area" style="display:none;" class="mt-3">
-                            <label for="valor-recebido">Valor Recebido:</label>
-                            <input type="number" step="0.01" class="form-control" id="valor-recebido">
-                            <div class="mt-2">
-                                <strong>Troco: <span id="troco" style="font-size:1.3rem;color:#198754;">R$ 0,00</span></strong>
+                        <div id="troco-area" style="display:none;" class="mt-4 p-3 bg-light rounded">
+                            <div class="mb-3">
+                                <label for="valor-recebido" class="form-label fw-bold">Valor Recebido:</label>
+                                <input type="number" step="0.01" class="form-control form-control-lg text-end" id="valor-recebido" placeholder="0,00" autofocus>
                             </div>
+                            <div class="mt-3 p-2 bg-white rounded border-2 border-success">
+                                <div class="d-flex justify-content-between align-items-center">
+                                    <span class="fw-bold">Total:</span>
+                                    <span style="font-size:1.2rem;">${formatCurrency(total)}</span>
+                                </div>
+                                <div class="d-flex justify-content-between align-items-center mt-2">
+                                    <span class="fw-bold text-success">Troco:</span>
+                                    <span id="troco" style="font-size:1.5rem; color:#198754; font-weight:bold;">R$ 0,00</span>
+                                </div>
+                            </div>
+                            <small class="text-muted d-block mt-2">💡 Dica: Digite o valor e pressione <kbd>Enter</kbd> para confirmar</small>
                         </div>
 
                         <div id="prazo-area" style="display:none;" class="mt-3 position-relative">
@@ -467,10 +514,15 @@ function abrirModalPagamento() {
     });
 
     $('#confirmar-pagamento').off('click').on('click', function() {
-        confirmarPagamento(modalEl);
+        confirmarPagamento(modalEl, onConfirm);
     });
 
     $('#valor-recebido').off('input').on('input', calcularTroco);
+
+    const formaPagamentoAtual = $('#formaPagamento').val();
+    if (formaPagamentoAtual === 'dinheiro') {
+        setTimeout(() => selecionarPagamento('dinheiro'), 0);
+    }
 }
 
 function selecionarPagamento(tipo) {
@@ -482,6 +534,21 @@ function selecionarPagamento(tipo) {
     if (tipo === 'dinheiro') {
         $('#troco-area').show();
         $('#prazo-area').hide();
+        $('#valor-recebido').val('');
+        calcularTroco();
+        // Foco automático no campo de valor recebido após pequeno delay
+        setTimeout(() => {
+            const valorInput = $('#valor-recebido');
+            if (valorInput.length) {
+                valorInput.trigger('focus');
+                valorInput.off('keypress').on('keypress', function(e) {
+                    if (e.which === 13) { // Enter
+                        e.preventDefault();
+                        document.getElementById('confirmar-pagamento').click();
+                    }
+                });
+            }
+        }, 100);
     } else if (tipo === 'prazo') {
         $('#troco-area').hide();
         $('#prazo-area').show();
@@ -544,7 +611,7 @@ function calcularTroco() {
     $('#troco').text(formatCurrency(troco));
 }
 
-function confirmarPagamento(modalEl) {
+function confirmarPagamento(modalEl, onConfirm) {
     if (!formaPagamentoSelecionada) {
         showNotification('Selecione uma forma de pagamento.', 'warning');
         return;
@@ -590,10 +657,14 @@ function confirmarPagamento(modalEl) {
     const instancia = bootstrap.Modal.getInstance(modalEl);
     if (instancia) instancia.hide();
 
-    executarFinalizacaoVenda();
+    if (typeof onConfirm === 'function') {
+        onConfirm();
+    } else {
+        executarFinalizacaoVenda();
+    }
 }
 
-function abrirModalDecisaoFiscal() {
+function abrirModalDecisaoFiscal(skipPagamento = false) {
     if (vendaEmProcessamento) {
         showNotification('A venda já está sendo processada.', 'warning');
         return;
@@ -611,12 +682,6 @@ function abrirModalDecisaoFiscal() {
         return;
     }
 
-    const clienteId = clienteSelecionado?.id || vendaPrazoInfo?.cliente_id || null;
-    if (formaPagamento === 'prazo' && !clienteId) {
-        showNotification('Para venda a prazo, selecione um cliente.', 'warning');
-        return;
-    }
-
     const desconto = parseFloat($('#desconto').val()) || 0;
     const subtotal = calcularSubtotal();
     const total = Math.round((Math.max(0, subtotal - desconto)) * 100) / 100;
@@ -625,6 +690,24 @@ function abrirModalDecisaoFiscal() {
         showNotification('O total final da venda é inválido.', 'warning');
         return;
     }
+
+    if (formaPagamento === 'dinheiro') {
+        const recebido = parseFloat($('#valorRecebidoPDV').val()) || 0;
+
+        if (recebido <= 0) {
+            showNotification('Informe o valor recebido em dinheiro.', 'warning');
+            $('#valorRecebidoPDV').trigger('focus');
+            return;
+        }
+
+        if (recebido < total) {
+            showNotification('O valor recebido é menor que o total da venda.', 'danger');
+            $('#valorRecebidoPDV').trigger('focus');
+            return;
+        }
+    }
+
+    const clienteId = clienteSelecionado?.id || vendaPrazoInfo?.cliente_id || null;
 
     $('#modal-container').html(`
         <div class="modal fade" id="decisaoFiscalModal" tabindex="-1" aria-hidden="true">
@@ -778,6 +861,10 @@ function executarFinalizacaoVenda() {
         }))
     };
 
+    if (formaPagamento === 'dinheiro') {
+        dados.valor_recebido = parseFloat($('#valorRecebidoPDV').val()) || 0;
+    }
+
     if (formaPagamento === 'prazo') {
         const dataRecebimento = vendaPrazoInfo?.primeiro_vencimento || $('#data-recebimento-prazo').val();
         if (!dataRecebimento) {
@@ -850,6 +937,10 @@ function finalizarPosVenda() {
     clienteSelecionado = null;
     vendaPrazoInfo = null;
     $('#desconto').val(0);
+    $('#formaPagamento').val('');
+    $('#valorRecebidoPDV').val('');
+    $('#trocoPDV').text('R$ 0,00');
+    aoAlterarFormaPagamento();
     removerClienteSelecionado();
     atualizarCarrinho();
     focarCampoCodigo();
@@ -885,6 +976,10 @@ function cancelarVendaAtual() {
     clienteSelecionado = null;
     vendaPrazoInfo = null;
     $('#desconto').val(0);
+    $('#formaPagamento').val('');
+    $('#valorRecebidoPDV').val('');
+    $('#trocoPDV').text('R$ 0,00');
+    aoAlterarFormaPagamento();
     removerClienteSelecionado();
     atualizarCarrinho();
     focarCampoCodigo();

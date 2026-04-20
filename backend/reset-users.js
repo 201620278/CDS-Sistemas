@@ -2,7 +2,11 @@ const sqlite3 = require('sqlite3').verbose();
 const path = require('path');
 const bcrypt = require('bcryptjs');
 
-const dbPath = path.join(__dirname, 'banco', 'mercadao.db');
+const defaultDbDir = path.resolve(__dirname, '..', 'dados');
+const dbDir = process.env.DB_DIR && process.env.DB_DIR.trim()
+  ? process.env.DB_DIR
+  : defaultDbDir;
+const dbPath = path.join(dbDir, 'mercadao.db');
 
 const db = new sqlite3.Database(dbPath, (err) => {
   if (err) {

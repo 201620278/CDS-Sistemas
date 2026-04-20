@@ -4,7 +4,19 @@ const db = require('../database');
 
 // LISTAR TODOS
 router.get('/', (req, res) => {
-  db.all('SELECT * FROM fornecedores ORDER BY nome ASC', (err, rows) => {
+  const { busca } = req.query;
+  let sql = 'SELECT * FROM fornecedores';
+  const params = [];
+
+  if (busca && String(busca).trim() !== '') {
+    sql += ' WHERE nome LIKE ? OR cpf_cnpj LIKE ? OR telefone LIKE ? OR razao_social LIKE ?';
+    const termo = `%${String(busca).trim()}%`;
+    params.push(termo, termo, termo, termo);
+  }
+
+  sql += ' ORDER BY nome ASC';
+
+  db.all(sql, params, (err, rows) => {
     if (err) {
       console.error('Erro ao listar fornecedores:', err.message);
       return res.status(500).json({ error: 'Erro ao listar fornecedores.' });

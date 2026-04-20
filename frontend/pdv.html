@@ -73,14 +73,39 @@
             </div>
 
             <div class="card p-3 mb-3">
-                <label for="formaPagamento" class="form-label">Forma de pagamento</label>
+                <label for="formaPagamento" class="form-label fw-bold">Forma de pagamento *</label>
                 <select id="formaPagamento" class="form-select" onchange="aoAlterarFormaPagamento()">
+                    <option value="">-- Selecionar --</option>
                     <option value="dinheiro">Dinheiro</option>
                     <option value="pix">Pix</option>
                     <option value="cartao_credito">Cartão de Crédito</option>
                     <option value="cartao_debito">Cartão de Débito</option>
                     <option value="prazo">A Prazo</option>
                 </select>
+
+                <div class="mt-3" id="pdvDinheiroBox" style="display:none;">
+                    <div class="row g-2">
+                        <div class="col-md-6">
+                            <label for="valorRecebidoPDV" class="form-label fw-bold">Valor recebido</label>
+                            <input
+                                type="number"
+                                class="form-control"
+                                id="valorRecebidoPDV"
+                                min="0"
+                                step="0.01"
+                                placeholder="0,00"
+                            >
+                        </div>
+
+                        <div class="col-md-6">
+                            <label class="form-label fw-bold">Troco</label>
+                            <div class="form-control bg-light fw-bold text-success" id="trocoPDV">
+                                R$ 0,00
+                            </div>
+                        </div>
+                    </div>
+                    <small class="text-muted">Informe o valor recebido para calcular o troco automaticamente.</small>
+                </div>
 
                 <div class="pdv-cliente-box mt-3" id="pdvClienteBox" style="display:none;">
                     <div class="d-flex flex-wrap align-items-start gap-2 mb-2">

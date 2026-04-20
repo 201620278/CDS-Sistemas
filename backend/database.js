@@ -1,8 +1,38 @@
 const sqlite3 = require('sqlite3').verbose();
 const path = require('path');
+const fs = require('fs');
 const bcrypt = require('bcryptjs');
 
-const dbPath = path.join(__dirname, 'banco', 'mercadao.db');
+// ================================
+// RESOLUÇÃO DO CAMINHO DO BANCO
+// ================================
+
+// 1. Se vier do Electron, usa a variável de ambiente DB_DIR
+// 2. Se não vier, continua usando a pasta local do projeto (modo desenvolvimento)
+
+const defaultDbDir = path.resolve(__dirname, '..', 'dados');
+
+function obterDiretorioBanco() {
+  const dbDirFromEnv = process.env.DB_DIR;
+
+  if (dbDirFromEnv && dbDirFromEnv.trim() !== '') {
+    return dbDirFromEnv;
+  }
+
+  // Caminho oficial do banco: pasta dados no diretório raiz do projeto
+  return defaultDbDir;
+}
+
+const dbDir = obterDiretorioBanco();
+const dbPath = path.join(dbDir, 'mercadao.db');
+
+// Garante que a pasta exista
+if (!fs.existsSync(dbDir)) {
+  fs.mkdirSync(dbDir, { recursive: true });
+  console.log('Pasta do banco criada em:', dbDir);
+}
+
+console.log('Banco SQLite em uso:', dbPath);
 
 const db = new sqlite3.Database(dbPath, (err) => {
   if (err) {
@@ -13,120 +43,142 @@ const db = new sqlite3.Database(dbPath, (err) => {
   }
 });
 
-function inicializarBanco() {
-                // ===== CATEGORIAS =====
-                db.run(`
-                  CREATE TABLE IF NOT EXISTS categorias (
-                    id INTEGER PRIMARY KEY AUTOINCREMENT,
-                    nome VARCHAR(100) NOT NULL UNIQUE,
-                    descricao TEXT
-                  )
-                `, (err) => {
-                  if (err) console.error('Erro ao criar tabela categorias:', err);
-                  else console.log('Tabela categorias criada/verificada');
-                });
+db.dbDir = dbDir;
+db.dbPath = dbPath;
 
-                // ===== SUBCATEGORIAS =====
-                db.run(`
-                  CREATE TABLE IF NOT EXISTS subcategorias (
-                    id INTEGER PRIMARY KEY AUTOINCREMENT,
-                    nome VARCHAR(100) NOT NULL,
-                    descricao TEXT,
-                    categoria_id INTEGER,
-                    FOREIGN KEY (categoria_id) REFERENCES categorias(id)
-                  )
-                `, (err) => {
-                  if (err) console.error('Erro ao criar tabela subcategorias:', err);
-                  else console.log('Tabela subcategorias criada/verificada');
-                });
+function aplicarAlteracaoSegura(tabela, sql) {
+  db.run(sql, (err) => {
+    if (err) {
+      const mensagem = err.message || ''
+      if (
+        mensagem.includes('duplicate column name') ||
+        mensagem.includes('already exists')
+      ) {
+        return;
+      }
+      console.error(`Erro ao executar alteração em ${tabela}: ${sql}`, err);
+      return;
+    }
+    console.log(`Alteração aplicada em ${tabela}: ${sql}`);
+  });
+}
 
-                // ===== GARANTIR COLUNAS NOVAS EM PRODUTOS =====
-                db.all(`PRAGMA table_info(produtos)`, [], (err, rows) => {
-                  if (err) {
-                    console.error('Erro ao verificar colunas da tabela produtos:', err);
-                    return;
-                  }
+function aplicarAlteracoesPosCriacao() {
+  const alteracoesProdutos = [
+    `ALTER TABLE produtos ADD COLUMN categoria_id INTEGER`,
+    `ALTER TABLE produtos ADD COLUMN subcategoria_id INTEGER`,
+    `ALTER TABLE produtos ADD COLUMN ncm TEXT`,
+    `ALTER TABLE produtos ADD COLUMN cfop TEXT`,
+    `ALTER TABLE produtos ADD COLUMN csosn TEXT`,
+    `ALTER TABLE produtos ADD COLUMN origem INTEGER DEFAULT 0`,
+    `ALTER TABLE produtos ADD COLUMN cest TEXT`,
+    `ALTER TABLE produtos ADD COLUMN codigo_barras TEXT`,
+    `ALTER TABLE produtos ADD COLUMN aliquota_icms REAL DEFAULT 0`,
+    `ALTER TABLE produtos ADD COLUMN aliquota_pis REAL DEFAULT 0`,
+    `ALTER TABLE produtos ADD COLUMN aliquota_cofins REAL DEFAULT 0`,
+    `ALTER TABLE produtos ADD COLUMN lucro_percentual DECIMAL(10,2)`
+  ];
 
-                  const colunas = rows.map(r => r.name);
-                  const alteracoes = [
-                    !colunas.includes('categoria_id') && `ALTER TABLE produtos ADD COLUMN categoria_id INTEGER`,
-                    !colunas.includes('subcategoria_id') && `ALTER TABLE produtos ADD COLUMN subcategoria_id INTEGER`,
-                    !colunas.includes('lucro_percentual') && `ALTER TABLE produtos ADD COLUMN lucro_percentual DECIMAL(10,2)`,
-                    !colunas.includes('ncm') && `ALTER TABLE produtos ADD COLUMN ncm TEXT`,
-                    !colunas.includes('cfop') && `ALTER TABLE produtos ADD COLUMN cfop TEXT`,
-                    !colunas.includes('csosn') && `ALTER TABLE produtos ADD COLUMN csosn TEXT`,
-                    !colunas.includes('origem') && `ALTER TABLE produtos ADD COLUMN origem INTEGER DEFAULT 0`,
-                    !colunas.includes('cest') && `ALTER TABLE produtos ADD COLUMN cest TEXT`,
-                    !colunas.includes('codigo_barras') && `ALTER TABLE produtos ADD COLUMN codigo_barras TEXT`,
-                    !colunas.includes('aliquota_icms') && `ALTER TABLE produtos ADD COLUMN aliquota_icms REAL DEFAULT 0`,
-                    !colunas.includes('aliquota_pis') && `ALTER TABLE produtos ADD COLUMN aliquota_pis REAL DEFAULT 0`,
-                    !colunas.includes('aliquota_cofins') && `ALTER TABLE produtos ADD COLUMN aliquota_cofins REAL DEFAULT 0`
-                  ].filter(Boolean);
+  const alteracoesCompras = [
+    `ALTER TABLE compras ADD COLUMN condicao_pagamento TEXT DEFAULT 'avista'`,
+    `ALTER TABLE compras ADD COLUMN forma_pagamento TEXT`,
+    `ALTER TABLE compras ADD COLUMN data_vencimento DATE`,
+    `ALTER TABLE compras ADD COLUMN parcelas INTEGER DEFAULT 1`,
+    `ALTER TABLE compras ADD COLUMN valor_entrada DECIMAL(10,2) DEFAULT 0`,
+    `ALTER TABLE compras ADD COLUMN observacao TEXT`
+  ];
 
-                  alteracoes.forEach(sql => {
-                    db.run(sql, (err) => {
-                      if (err) {
-                        console.error(`Erro ao executar alteração de produto: ${sql}`, err);
-                      } else {
-                        console.log(`Alteração aplicada em produtos: ${sql}`);
-                      }
-                    });
-                  });
-                });
-              // Tabela de subcategorias
-              db.run(`
-                CREATE TABLE IF NOT EXISTS subcategorias (
-                  id INTEGER PRIMARY KEY AUTOINCREMENT,
-                  nome TEXT NOT NULL,
-                  categoria_id INTEGER NOT NULL,
-                  ativo INTEGER DEFAULT 1,
-                  created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
-                  updated_at DATETIME DEFAULT CURRENT_TIMESTAMP,
-                  FOREIGN KEY (categoria_id) REFERENCES categorias(id)
-                )
-              `, (err) => {
-                if (err) console.error('Erro ao criar tabela subcategorias:', err);
-                else console.log('Tabela subcategorias criada/verificada');
-              });
-          // Tabela de categorias
-          db.run(`
-            CREATE TABLE IF NOT EXISTS categorias (
-              id INTEGER PRIMARY KEY AUTOINCREMENT,
-              nome TEXT NOT NULL UNIQUE,
-              descricao TEXT,
-              ativo INTEGER DEFAULT 1,
-              created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
-              updated_at DATETIME DEFAULT CURRENT_TIMESTAMP
-            )
-          `, (err) => {
-            if (err) console.error('Erro ao criar tabela categorias:', err);
-            else console.log('Tabela categorias criada/verificada');
-          });
-      // Tabela de fornecedores
-      db.run(`
-        CREATE TABLE IF NOT EXISTS fornecedores (
-          id INTEGER PRIMARY KEY AUTOINCREMENT,
-          nome VARCHAR(200) NOT NULL,
-          razao_social VARCHAR(200),
-          cpf_cnpj VARCHAR(20) UNIQUE,
-          telefone VARCHAR(20),
-          email VARCHAR(100),
-          contato VARCHAR(100),
-          cep VARCHAR(10),
-          rua VARCHAR(200),
-          numero VARCHAR(20),
-          bairro VARCHAR(100),
-          cidade VARCHAR(100),
-          uf VARCHAR(2),
-          observacoes TEXT,
-          created_at DATETIME DEFAULT CURRENT_TIMESTAMP
-        )
-      `, (err) => {
-        if (err) console.error('Erro ao criar tabela fornecedores:', err);
-        else console.log('Tabela fornecedores criada/verificada');
-      });
-  // Criar todas as tabelas em sequência
+  const alteracoesFinanceiro = [
+    `ALTER TABLE financeiro ADD COLUMN status TEXT DEFAULT 'pago'`,
+    `ALTER TABLE financeiro ADD COLUMN origem TEXT DEFAULT 'manual'`,
+    `ALTER TABLE financeiro ADD COLUMN documento TEXT`,
+    `ALTER TABLE financeiro ADD COLUMN vencimento DATE`,
+    `ALTER TABLE financeiro ADD COLUMN numero_parcela INTEGER`,
+    `ALTER TABLE financeiro ADD COLUMN total_parcelas INTEGER`,
+    `ALTER TABLE financeiro ADD COLUMN compra_id INTEGER`,
+    `ALTER TABLE financeiro ADD COLUMN venda_id INTEGER`,
+    `ALTER TABLE financeiro ADD COLUMN pessoa_nome TEXT`,
+    `ALTER TABLE financeiro ADD COLUMN observacao TEXT`,
+    `ALTER TABLE financeiro ADD COLUMN baixado_em DATE`
+  ];
+
+  const alteracoesComprasItens = [
+    `ALTER TABLE compras_itens ADD COLUMN descricao_produto TEXT`,
+    `ALTER TABLE compras_itens ADD COLUMN codigo_barras TEXT`,
+    `ALTER TABLE compras_itens ADD COLUMN margem_lucro DECIMAL(10,2) DEFAULT 30`,
+    `ALTER TABLE compras_itens ADD COLUMN preco_venda_sugerido DECIMAL(10,2)`,
+    `ALTER TABLE compras_itens ADD COLUMN unidade TEXT`,
+    `ALTER TABLE compras_itens ADD COLUMN ncm TEXT`
+  ];
+
+  const alteracoesVendas = [
+    `ALTER TABLE vendas ADD COLUMN valor_recebido DECIMAL(10,2)`
+  ];
+
+  alteracoesProdutos.forEach(sql => aplicarAlteracaoSegura('produtos', sql));
+  alteracoesCompras.forEach(sql => aplicarAlteracaoSegura('compras', sql));
+  alteracoesFinanceiro.forEach(sql => aplicarAlteracaoSegura('financeiro', sql));
+  alteracoesComprasItens.forEach(sql => aplicarAlteracaoSegura('compras_itens', sql));
+  alteracoesVendas.forEach(sql => aplicarAlteracaoSegura('vendas', sql));
+}
+
+function criarTabelas() {
   db.serialize(() => {
+    // Tabela de categorias
+    db.run(`
+      CREATE TABLE IF NOT EXISTS categorias (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        nome TEXT NOT NULL UNIQUE,
+        descricao TEXT,
+        ativo INTEGER DEFAULT 1,
+        created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+        updated_at DATETIME DEFAULT CURRENT_TIMESTAMP
+      )
+    `, (err) => {
+      if (err) console.error('Erro ao criar tabela categorias:', err);
+      else console.log('Tabela categorias criada/verificada');
+    });
+
+    // Tabela de subcategorias
+    db.run(`
+      CREATE TABLE IF NOT EXISTS subcategorias (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        nome TEXT NOT NULL,
+        categoria_id INTEGER NOT NULL,
+        ativo INTEGER DEFAULT 1,
+        created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+        updated_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+        FOREIGN KEY (categoria_id) REFERENCES categorias(id)
+      )
+    `, (err) => {
+      if (err) console.error('Erro ao criar tabela subcategorias:', err);
+      else console.log('Tabela subcategorias criada/verificada');
+    });
+
+    // Tabela de fornecedores
+    db.run(`
+      CREATE TABLE IF NOT EXISTS fornecedores (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        nome VARCHAR(200) NOT NULL,
+        razao_social VARCHAR(200),
+        cpf_cnpj VARCHAR(20) UNIQUE,
+        telefone VARCHAR(20),
+        email VARCHAR(100),
+        contato VARCHAR(100),
+        cep VARCHAR(10),
+        rua VARCHAR(200),
+        numero VARCHAR(20),
+        bairro VARCHAR(100),
+        cidade VARCHAR(100),
+        uf VARCHAR(2),
+        observacoes TEXT,
+        created_at DATETIME DEFAULT CURRENT_TIMESTAMP
+      )
+    `, (err) => {
+      if (err) console.error('Erro ao criar tabela fornecedores:', err);
+      else console.log('Tabela fornecedores criada/verificada');
+    });
+
     // Tabela de produtos
     db.run(`
       CREATE TABLE IF NOT EXISTS produtos (
@@ -331,10 +383,7 @@ function inicializarBanco() {
       )
     `, (err) => {
       if (err) console.error('Erro ao criar tabela usuarios:', err);
-      else {
-        console.log('Tabela usuarios criada/verificada');
-        seedUsuarioAdmin();
-      }
+      else console.log('Tabela usuarios criada/verificada');
     });
 
     // Tabela de NFC-e emitidas
@@ -377,17 +426,23 @@ function inicializarBanco() {
         console.error('Erro ao criar tabela configuracoes:', err);
       } else {
         console.log('Tabela configuracoes criada/verificada');
-        // Inserir configurações padrão após criar a tabela
-        inserirConfiguracoesPadrao();
       }
     });
   });
-
-  garantirColunasCompras();
-  garantirColunasFinanceiro();
 }
 
+function inicializarBanco() {
+  db.serialize(() => {
+    criarTabelas();
+    aplicarAlteracoesPosCriacao();
+    inserirConfiguracoesPadrao();
+    criarUsuarioAdminPadrao();
+  });
+}
 
+function criarUsuarioAdminPadrao() {
+  seedUsuarioAdmin();
+}
 function garantirColunasCompras() {
   db.all(`PRAGMA table_info(compras)`, [], (err, rows) => {
     if (err) {

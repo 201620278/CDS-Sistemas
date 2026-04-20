@@ -4,8 +4,10 @@ const { google } = require('googleapis');
 const cron = require('node-cron');
 const db = require('./database');
 
-// Caminho do banco de dados
-const DB_PATH = path.join(__dirname, 'banco', 'mercadao.db');
+const defaultDbDir = path.resolve(__dirname, '..', 'dados');
+const DB_PATH = process.env.DB_DIR && process.env.DB_DIR.trim()
+  ? path.join(process.env.DB_DIR, 'mercadao.db')
+  : path.join(defaultDbDir, 'mercadao.db');
 // Caminho do arquivo de configurações de backup
 const CONFIG_PATH = path.join(__dirname, 'backup-config.json');
 

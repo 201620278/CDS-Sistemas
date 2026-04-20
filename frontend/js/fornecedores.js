@@ -57,6 +57,8 @@ function loadFornecedores() {
   });
 
   carregarListaFornecedores();
+}
+
 // Exibe o formulário de fornecedor no container
 function exibirFormularioFornecedor(fornecedor = null) {
   const isEdicao = !!fornecedor;
@@ -157,7 +159,6 @@ function buscarEnderecoPorCEP(cep) {
   }).fail(function() {
     showNotification('Erro ao buscar o CEP.', 'danger');
   });
-}
 }
 
 async function carregarListaFornecedores() {

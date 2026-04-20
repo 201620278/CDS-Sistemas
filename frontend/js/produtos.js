@@ -14,8 +14,8 @@ function normalizarProduto(produto, categorias = window.categoriasSistema || [])
     const subcategoriaObj = categoriaObj && categoriaObj.subcategorias ? categoriaObj.subcategorias.find(s => String(s.id) === subcategoriaId) : null;
     return {
         ...produto,
-        categoria: produto.categoria || (categoriaObj ? categoriaObj.nome : ''),
-        subcategoria: produto.subcategoria || (subcategoriaObj ? subcategoriaObj.nome : '')
+        categoria: produto.categoria || produto.categoria_nome || (categoriaObj ? categoriaObj.nome : ''),
+        subcategoria: produto.subcategoria || produto.subcategoria_nome || (subcategoriaObj ? subcategoriaObj.nome : '')
     };
 }
 // Função global para minimizar modais Bootstrap
@@ -475,7 +475,7 @@ function inicializarAutocompleteFornecedor() {
         }
 
         $.ajax({
-            url: `${API_URL}/fornecedores`,
+            url: `${API_URL}/fornecedores?busca=${encodeURIComponent(termo)}`,
             method: 'GET',
             headers: {
                 Authorization: 'Bearer ' + (localStorage.getItem('token') || '')
@@ -753,6 +753,7 @@ function viewProduto(id) {
             Authorization: 'Bearer ' + (localStorage.getItem('token') || '')
         },
         success: function (produto) {
+            const produtoNormalizado = normalizarProduto(produto, window.categoriasSistema || []);
             const modalHtml = `
                 <div class="modal fade" id="viewProdutoModal" tabindex="-1" aria-hidden="true">
                     <div class="modal-dialog">
@@ -767,16 +768,16 @@ function viewProduto(id) {
                                 </div>
                             </div>
                             <div class="modal-body">
-                                <p><strong>Nome:</strong> ${escapeHtml(produto.nome || '-')}</p>
-                                <p><strong>Código:</strong> ${escapeHtml(produto.codigo || '-')}</p>
-                                <p><strong>Categoria:</strong> ${escapeHtml(produto.categoria || '-')}</p>
-                                <p><strong>Subcategoria:</strong> ${escapeHtml(produto.subcategoria || '-')}</p>
-                                <p><strong>Unidade:</strong> ${escapeHtml(produto.unidade || '-')}</p>
-                                <p><strong>Preço de Compra:</strong> ${formatCurrency(produto.preco_compra || 0)}</p>
-                                <p><strong>Preço de Venda:</strong> ${formatCurrency(produto.preco_venda || 0)}</p>
-                                <p><strong>Estoque Atual:</strong> ${Number(produto.estoque_atual || 0)}</p>
-                                <p><strong>Estoque Mínimo:</strong> ${Number(produto.estoque_minimo || 0)}</p>
-                                <p><strong>Fornecedor:</strong> ${escapeHtml(produto.fornecedor || '-')}</p>
+                                <p><strong>Nome:</strong> ${escapeHtml(produtoNormalizado.nome || '-')}</p>
+                                <p><strong>Código:</strong> ${escapeHtml(produtoNormalizado.codigo || '-')}</p>
+                                <p><strong>Categoria:</strong> ${escapeHtml(produtoNormalizado.categoria || '-')}</p>
+                                <p><strong>Subcategoria:</strong> ${escapeHtml(produtoNormalizado.subcategoria || '-')}</p>
+                                <p><strong>Unidade:</strong> ${escapeHtml(produtoNormalizado.unidade || '-')}</p>
+                                <p><strong>Preço de Compra:</strong> ${formatCurrency(produtoNormalizado.preco_compra || 0)}</p>
+                                <p><strong>Preço de Venda:</strong> ${formatCurrency(produtoNormalizado.preco_venda || 0)}</p>
+                                <p><strong>Estoque Atual:</strong> ${Number(produtoNormalizado.estoque_atual || 0)}</p>
+                                <p><strong>Estoque Mínimo:</strong> ${Number(produtoNormalizado.estoque_minimo || 0)}</p>
+                                <p><strong>Fornecedor:</strong> ${escapeHtml(produtoNormalizado.fornecedor || '-')}</p>
                             </div>
                             <div class="modal-footer">
                                 <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Fechar</button>

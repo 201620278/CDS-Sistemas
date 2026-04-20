@@ -4,7 +4,7 @@
   "description": "Sistema de gestão para mercado",
   "main": "backend/server.js",
   "scripts": {
-    "start": "node backend/server.js",
+    "start": "set DB_DIR=C:\\SIST. GESTÃO MERCANTIL MOD. FISCAL\\dados&& node backend/server.js",
     "dev": "nodemon backend/server.js"
   },
   "dependencies": {
