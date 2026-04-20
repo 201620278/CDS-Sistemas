@@ -85,7 +85,18 @@ function aplicarAlteracoesPosCriacao() {
     `ALTER TABLE compras ADD COLUMN data_vencimento DATE`,
     `ALTER TABLE compras ADD COLUMN parcelas INTEGER DEFAULT 1`,
     `ALTER TABLE compras ADD COLUMN valor_entrada DECIMAL(10,2) DEFAULT 0`,
-    `ALTER TABLE compras ADD COLUMN observacao TEXT`
+    `ALTER TABLE compras ADD COLUMN observacao TEXT`,
+    `ALTER TABLE compras ADD COLUMN numero_nf TEXT`,
+    `ALTER TABLE compras ADD COLUMN serie_nf TEXT`,
+    `ALTER TABLE compras ADD COLUMN modelo_nf TEXT`,
+    `ALTER TABLE compras ADD COLUMN chave_acesso TEXT`,
+    `ALTER TABLE compras ADD COLUMN data_emissao DATE`,
+    `ALTER TABLE compras ADD COLUMN data_entrada DATE`,
+    `ALTER TABLE compras ADD COLUMN valor_produtos DECIMAL(10,2) DEFAULT 0`,
+    `ALTER TABLE compras ADD COLUMN valor_desconto DECIMAL(10,2) DEFAULT 0`,
+    `ALTER TABLE compras ADD COLUMN valor_frete DECIMAL(10,2) DEFAULT 0`,
+    `ALTER TABLE compras ADD COLUMN valor_outras_despesas DECIMAL(10,2) DEFAULT 0`,
+    `ALTER TABLE compras ADD COLUMN valor_total_nota DECIMAL(10,2) DEFAULT 0`
   ];
 
   const alteracoesFinanceiro = [
@@ -233,9 +244,26 @@ function criarTabelas() {
       CREATE TABLE IF NOT EXISTS compras (
         id INTEGER PRIMARY KEY AUTOINCREMENT,
         data_compra DATE NOT NULL,
+        data_emissao DATE,
+        data_entrada DATE,
         fornecedor VARCHAR(200),
+        numero_nf TEXT,
+        serie_nf TEXT,
+        modelo_nf TEXT,
+        chave_acesso TEXT,
+        valor_produtos DECIMAL(10,2) DEFAULT 0,
+        valor_desconto DECIMAL(10,2) DEFAULT 0,
+        valor_frete DECIMAL(10,2) DEFAULT 0,
+        valor_outras_despesas DECIMAL(10,2) DEFAULT 0,
+        valor_total_nota DECIMAL(10,2) DEFAULT 0,
         total DECIMAL(10,2) NOT NULL,
         status VARCHAR(20) DEFAULT 'pendente',
+        condicao_pagamento TEXT DEFAULT 'avista',
+        forma_pagamento TEXT,
+        data_vencimento DATE,
+        parcelas INTEGER DEFAULT 1,
+        valor_entrada DECIMAL(10,2) DEFAULT 0,
+        observacao TEXT,
         created_at DATETIME DEFAULT CURRENT_TIMESTAMP
       )
     `, (err) => {
@@ -457,7 +485,18 @@ function garantirColunasCompras() {
       !colunas.includes('data_vencimento') && `ALTER TABLE compras ADD COLUMN data_vencimento DATE`,
       !colunas.includes('parcelas') && `ALTER TABLE compras ADD COLUMN parcelas INTEGER DEFAULT 1`,
       !colunas.includes('valor_entrada') && `ALTER TABLE compras ADD COLUMN valor_entrada DECIMAL(10,2) DEFAULT 0`,
-      !colunas.includes('observacao') && `ALTER TABLE compras ADD COLUMN observacao TEXT`
+      !colunas.includes('observacao') && `ALTER TABLE compras ADD COLUMN observacao TEXT`,
+      !colunas.includes('numero_nf') && `ALTER TABLE compras ADD COLUMN numero_nf TEXT`,
+      !colunas.includes('serie_nf') && `ALTER TABLE compras ADD COLUMN serie_nf TEXT`,
+      !colunas.includes('modelo_nf') && `ALTER TABLE compras ADD COLUMN modelo_nf TEXT`,
+      !colunas.includes('chave_acesso') && `ALTER TABLE compras ADD COLUMN chave_acesso TEXT`,
+      !colunas.includes('data_emissao') && `ALTER TABLE compras ADD COLUMN data_emissao DATE`,
+      !colunas.includes('data_entrada') && `ALTER TABLE compras ADD COLUMN data_entrada DATE`,
+      !colunas.includes('valor_produtos') && `ALTER TABLE compras ADD COLUMN valor_produtos DECIMAL(10,2) DEFAULT 0`,
+      !colunas.includes('valor_desconto') && `ALTER TABLE compras ADD COLUMN valor_desconto DECIMAL(10,2) DEFAULT 0`,
+      !colunas.includes('valor_frete') && `ALTER TABLE compras ADD COLUMN valor_frete DECIMAL(10,2) DEFAULT 0`,
+      !colunas.includes('valor_outras_despesas') && `ALTER TABLE compras ADD COLUMN valor_outras_despesas DECIMAL(10,2) DEFAULT 0`,
+      !colunas.includes('valor_total_nota') && `ALTER TABLE compras ADD COLUMN valor_total_nota DECIMAL(10,2) DEFAULT 0`
     ].filter(Boolean);
 
     db.serialize(() => {

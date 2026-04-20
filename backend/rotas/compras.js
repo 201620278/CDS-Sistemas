@@ -304,7 +304,18 @@ router.get('/:id', (req, res) => {
 router.post('/', (req, res) => {
   const {
     data_compra,
+    data_emissao,
+    data_entrada,
     fornecedor,
+    numero_nf,
+    serie_nf,
+    modelo_nf,
+    chave_acesso,
+    valor_produtos,
+    valor_desconto,
+    valor_frete,
+    valor_outras_despesas,
+    valor_total_nota,
     total,
     itens,
     condicao_pagamento,
@@ -324,6 +335,11 @@ router.post('/', (req, res) => {
     return res.status(400).json({ error: 'Total da compra inválido.' });
   }
 
+  const chaveLimpa = digitsOnly(chave_acesso || '');
+  if (chaveLimpa && chaveLimpa.length !== 44) {
+    return res.status(400).json({ error: 'A chave de acesso da NF deve ter 44 dígitos.' });
+  }
+
   const condicao = condicao_pagamento || 'avista';
   const qtdParcelas = Math.max(1, Number(parcelas) || 1);
 
@@ -331,13 +347,25 @@ router.post('/', (req, res) => {
     db.run('BEGIN TRANSACTION');
     db.run(`
       INSERT INTO compras (
-        data_compra, fornecedor, total, status,
+        data_compra, data_emissao, data_entrada, fornecedor, numero_nf, serie_nf, modelo_nf, chave_acesso,
+        valor_produtos, valor_desconto, valor_frete, valor_outras_despesas, valor_total_nota, total, status,
         condicao_pagamento, forma_pagamento, data_vencimento, parcelas, valor_entrada, observacao
-      ) VALUES (?, ?, ?, 'concluida', ?, ?, ?, ?, ?, ?)
+      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'concluida', ?, ?, ?, ?, ?, ?)
     `, [
       data_compra,
+      data_emissao || null,
+      data_entrada || null,
       fornecedor || null,
-      totalNum,
+      numero_nf || null,
+      serie_nf || null,
+      modelo_nf || null,
+      chave_acesso || null,
+      Number(valor_produtos) || 0,
+      Number(valor_desconto) || 0,
+      Number(valor_frete) || 0,
+      Number(valor_outras_despesas) || 0,
+      Number(valor_total_nota) || totalNum,
+      Number(valor_total_nota) || totalNum,
       condicao,
       forma_pagamento || null,
       data_vencimento || (condicao === 'avista' ? data_compra : null),

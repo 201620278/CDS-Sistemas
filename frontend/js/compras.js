@@ -123,7 +123,7 @@ function atualizarVisibilidadePagamentoCompra() {
 }
 
 function calcularParcelasCompra() {
-    const total = itensCompraAtual.reduce((sum, item) => sum + Number(item.subtotal || 0), 0);
+    const total = Number($('#valor_total_nota').val()) || itensCompraAtual.reduce((sum, item) => sum + Number(item.subtotal || 0), 0);
     const parcelas = parseInt($('#parcelas').val(), 10) || 1;
     const dataVencimento = $('#data_vencimento').val();
     const condicao = $('#condicao_pagamento').val();
@@ -216,6 +216,18 @@ function recalcularLinhaCompra(index, origem = 'custo') {
 }
 
 
+function recalcularTotaisCompraNota() {
+    const valorProdutos = itensCompraAtual.reduce((sum, item) => sum + Number(item.subtotal || 0), 0);
+    const desconto = Number($('#valor_desconto').val()) || 0;
+    const frete = Number($('#valor_frete').val()) || 0;
+    const outras = Number($('#valor_outras_despesas').val()) || 0;
+    const totalNota = Number((valorProdutos - desconto + frete + outras).toFixed(2));
+
+    $('#valor_produtos').val(formatNumberInput(valorProdutos));
+    $('#valor_total_nota').val(formatNumberInput(totalNota));
+    $('#totalCompra').text(formatCurrency(totalNota));
+}
+
 function removerItemCompra(index) {
     if (index < 0 || index >= itensCompraAtual.length) return;
     itensCompraAtual.splice(index, 1);
@@ -225,7 +237,6 @@ function removerItemCompra(index) {
 
 function renderItensCompraTabela() {
     const tbody = $('#itensCompraBody');
-    const total = itensCompraAtual.reduce((sum, item) => sum + Number(item.subtotal || 0), 0);
     const optionsProdutos = '<option value="">Selecione</option>' + produtosList.map(p => `<option value="${p.id}">${p.nome}</option>`).join('');
     tbody.html(itensCompraAtual.map((item, index) => `
         <tr>
@@ -247,7 +258,7 @@ function renderItensCompraTabela() {
             </td>
         </tr>
     `).join('') || '<tr><td colspan="8" class="text-center">Nenhum item adicionado.</td></tr>');
-    $('#totalCompra').text(formatCurrency(total));
+    recalcularTotaisCompraNota();
     calcularParcelasCompra();
 }
 
@@ -479,25 +490,68 @@ function showCompraModal() {
                         </div>
                     </div>
                     <div class="modal-body">
-                                            <div class="row g-2">
-                            <div class="col-md-4 mb-3">
-                                <label class="form-label">Data da compra *</label>
-                                <input type="date" class="form-control" id="data_compra" value="${hoje}">
-                            </div>
-                            <div class="col-md-6 mb-3">
-                                <label class="form-label">Fornecedor</label>
-                                <input type="text" class="form-control" id="fornecedor" list="fornecedores-datalist" autocomplete="off" oninput="onFornecedorInput()" onkeydown="onFornecedorKeyDown(event)">
-                                <datalist id="fornecedores-datalist">
-                                    ${fornecedoresList.map(f => `<option value="${escapeHtml(f.nome || '')}"></option>`).join('')}
-                                </datalist>
-                            </div>
-                        </div>
-                        <div class="mb-3">
-                            <label class="form-label">Observação</label>
-                            <textarea class="form-control" id="observacao_compra" rows="2"></textarea>
-                        </div>
-                        <hr>
-                        <h6>Itens da compra</h6>
+                                            <div class="row g-3">
+    <div class="col-12">
+        <h6 class="border-bottom pb-2 mb-2">Dados da nota de compra</h6>
+    </div>
+
+    <div class="col-md-2">
+        <label class="form-label">Data da compra *</label>
+        <input type="date" class="form-control" id="data_compra" value="${hoje}">
+    </div>
+
+    <div class="col-md-2">
+        <label class="form-label">Data emissão</label>
+        <input type="date" class="form-control" id="data_emissao" value="${hoje}">
+    </div>
+
+    <div class="col-md-2">
+        <label class="form-label">Data entrada</label>
+        <input type="date" class="form-control" id="data_entrada" value="${hoje}">
+    </div>
+
+    <div class="col-md-6">
+        <label class="form-label">Fornecedor</label>
+        <input type="text" class="form-control" id="fornecedor" list="lista_fornecedores" oninput="onFornecedorInput()" onkeydown="onFornecedorKeyDown(event)">
+        <datalist id="lista_fornecedores">
+            ${fornecedoresList.map(f => `<option value="${escapeHtml(f.nome || '')}"></option>`).join('')}
+        </datalist>
+    </div>
+
+    <div class="col-md-2">
+        <label class="form-label">Número NF</label>
+        <input type="text" class="form-control" id="numero_nf" maxlength="20">
+    </div>
+
+    <div class="col-md-2">
+        <label class="form-label">Série</label>
+        <input type="text" class="form-control" id="serie_nf" maxlength="10">
+    </div>
+
+    <div class="col-md-2">
+        <label class="form-label">Modelo</label>
+        <input type="text" class="form-control" id="modelo_nf" value="55" maxlength="5">
+    </div>
+
+    <div class="col-md-6">
+        <label class="form-label">Chave de acesso</label>
+        <input type="text" class="form-control" id="chave_acesso" maxlength="44" placeholder="Digite ou leia a chave da NF" oninput="this.value = this.value.replace(/\\D/g, '')">
+        <small class="text-muted">Aceita leitura por leitor de código de barras.</small>
+    </div>
+
+    <div class="col-12">
+        <label class="form-label">Observação</label>
+        <textarea class="form-control" id="observacao_compra" rows="2"></textarea>
+    </div>
+</div>
+
+<hr>
+
+<div class="row g-3">
+    <div class="col-12">
+        <h6 class="border-bottom pb-2 mb-2">Itens da compra</h6>
+    </div>
+</div>
                         <div class="row g-2 align-items-end">
                             <div class="col-md-4">
                                 <label class="form-label">Código de barras / descrição rápida</label>
@@ -551,6 +605,40 @@ function showCompraModal() {
                                 <tbody id="itensCompraBody"></tbody>
                                 <tfoot><tr><th colspan="6" class="text-end">Total</th><th id="totalCompra">${formatCurrency(0)}</th><th></th></tr></tfoot>
                             </table>
+
+                            <hr>
+                            <div class="row g-2 mt-2">
+    <div class="col-12">
+        <h6 class="border-bottom pb-2 mb-2">Totais da nota</h6>
+    </div>
+
+    <div class="col-md-2">
+        <label class="form-label">Valor produtos</label>
+        <input type="number" step="0.01" class="form-control" id="valor_produtos" value="0.00" readonly>
+    </div>
+
+    <div class="col-md-2">
+        <label class="form-label">Desconto</label>
+        <input type="number" step="0.01" class="form-control" id="valor_desconto" value="0.00" oninput="recalcularTotaisCompraNota(); calcularParcelasCompra();">
+    </div>
+
+    <div class="col-md-2">
+        <label class="form-label">Frete</label>
+        <input type="number" step="0.01" class="form-control" id="valor_frete" value="0.00" oninput="recalcularTotaisCompraNota(); calcularParcelasCompra();">
+    </div>
+
+    <div class="col-md-3">
+        <label class="form-label">Outras despesas</label>
+        <input type="number" step="0.01" class="form-control" id="valor_outras_despesas" value="0.00" oninput="recalcularTotaisCompraNota(); calcularParcelasCompra();">
+    </div>
+
+    <div class="col-md-3">
+        <label class="form-label">Valor total da nota</label>
+        <input type="number" step="0.01" class="form-control fw-bold" id="valor_total_nota" value="0.00" readonly>
+    </div>
+</div>
+
+<hr>
                             <div class="row g-2">
                             <div class="col-md-3 mb-3">
                                 <label class="form-label">Condição de pagamento *</label>
@@ -603,7 +691,7 @@ function saveCompra() {
         return;
     }
 
-    const total = itensCompraAtual.reduce((sum, item) => sum + Number(item.subtotal || 0), 0);
+    const total = Number($('#valor_total_nota').val()) || itensCompraAtual.reduce((sum, item) => sum + Number(item.subtotal || 0), 0);
     const condicaoPagamento = $('#condicao_pagamento').val();
     const valorEntrada = Number($('#valor_entrada').val()) || 0;
     const parcelas = parseInt($('#parcelas').val(), 10) || 1;
@@ -615,7 +703,18 @@ function saveCompra() {
 
     const data = {
         data_compra: $('#data_compra').val(),
+        data_emissao: $('#data_emissao').val(),
+        data_entrada: $('#data_entrada').val(),
         fornecedor: $('#fornecedor').val(),
+        numero_nf: $('#numero_nf').val().trim(),
+        serie_nf: $('#serie_nf').val().trim(),
+        modelo_nf: $('#modelo_nf').val().trim() || '55',
+        chave_acesso: ($('#chave_acesso').val() || '').replace(/\D/g, ''),
+        valor_produtos: Number($('#valor_produtos').val()) || 0,
+        valor_desconto: Number($('#valor_desconto').val()) || 0,
+        valor_frete: Number($('#valor_frete').val()) || 0,
+        valor_outras_despesas: Number($('#valor_outras_despesas').val()) || 0,
+        valor_total_nota: Number($('#valor_total_nota').val()) || 0,
         total,
         itens: itensCompraAtual.map(item => ({
             produto_id: item.produto_id || null,
@@ -636,6 +735,16 @@ function saveCompra() {
         valor_entrada: valorEntrada,
         observacao: $('#observacao_compra').val()
     };
+
+    if (data.chave_acesso && data.chave_acesso.length !== 44) {
+        showNotification('A chave de acesso deve ter 44 dígitos.', 'warning');
+        return;
+    }
+
+    if (!data.fornecedor || !data.fornecedor.trim()) {
+        showNotification('Informe o fornecedor da nota.', 'warning');
+        return;
+    }
 
     $.ajax({
         url: `${API_URL}/compras`,
@@ -681,8 +790,31 @@ function viewCompra(id) {
                         </div>
                         <div class="modal-body">
                             <p><strong>Fornecedor:</strong> ${escapeHtml(compra.fornecedor || '-')}</p>
-                            <p><strong>Data:</strong> ${formatDate(compra.data_compra)} | <strong>Condição:</strong> ${rotuloCondicaoPagamento(compra.condicao_pagamento || 'avista')} | <strong>Forma:</strong> ${rotuloFormaPagamento(compra.forma_pagamento)}</p>
-                            <p><strong>Total:</strong> ${formatCurrency(compra.total)}</p>
+                            <p>
+                                <strong>Data compra:</strong> ${formatDate(compra.data_compra)}
+                                ${compra.data_emissao ? ` | <strong>Emissão:</strong> ${formatDate(compra.data_emissao)}` : ''}
+                                ${compra.data_entrada ? ` | <strong>Entrada:</strong> ${formatDate(compra.data_entrada)}` : ''}
+                            </p>
+                            <p>
+                                <strong>Número NF:</strong> ${escapeHtml(compra.numero_nf || '-')}
+                                | <strong>Série:</strong> ${escapeHtml(compra.serie_nf || '-')}
+                                | <strong>Modelo:</strong> ${escapeHtml(compra.modelo_nf || '-')}
+                            </p>
+                            <p style="word-break: break-all;">
+                                <strong>Chave de acesso:</strong> ${escapeHtml(compra.chave_acesso || '-')}
+                            </p>
+                            <p>
+                                <strong>Valor produtos:</strong> ${formatCurrency(compra.valor_produtos || 0)}
+                                | <strong>Desconto:</strong> ${formatCurrency(compra.valor_desconto || 0)}
+                                | <strong>Frete:</strong> ${formatCurrency(compra.valor_frete || 0)}
+                                | <strong>Outras despesas:</strong> ${formatCurrency(compra.valor_outras_despesas || 0)}
+                            </p>
+                            <p>
+                                <strong>Total nota:</strong> ${formatCurrency(compra.valor_total_nota || compra.total || 0)}
+                                | <strong>Condição:</strong> ${rotuloCondicaoPagamento(compra.condicao_pagamento || 'avista')}
+                                | <strong>Forma:</strong> ${rotuloFormaPagamento(compra.forma_pagamento)}
+                            </p>
+                            <p><strong>Observação:</strong> ${escapeHtml(compra.observacao || '-')}</p>
                             <h6>Itens</h6>
                             <table class="table table-bordered"><thead><tr><th>Produto</th><th>Qtd</th><th>Preço compra</th><th>Margem</th><th>Venda sugerida</th><th>Subtotal</th></tr></thead><tbody>${itensHtml}</tbody></table>
                             <h6>Lançamentos financeiros gerados</h6>
