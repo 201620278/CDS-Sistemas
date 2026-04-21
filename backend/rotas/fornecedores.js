@@ -9,9 +9,24 @@ router.get('/', (req, res) => {
   const params = [];
 
   if (busca && String(busca).trim() !== '') {
+<<<<<<< HEAD
     sql += ' WHERE nome LIKE ? OR cpf_cnpj LIKE ? OR telefone LIKE ? OR razao_social LIKE ?';
     const termo = `%${String(busca).trim()}%`;
     params.push(termo, termo, termo, termo);
+=======
+    const buscaTexto = String(busca).trim();
+    const buscaNumerica = buscaTexto.replace(/\D/g, '');
+    const termo = `%${buscaTexto}%`;
+
+    sql += ' WHERE nome LIKE ? OR cpf_cnpj LIKE ? OR telefone LIKE ? OR razao_social LIKE ?';
+    params.push(termo, termo, termo, termo);
+
+    // Permite busca por CNPJ digitado só com números (sem máscara).
+    if (buscaNumerica) {
+      sql += " OR REPLACE(REPLACE(REPLACE(REPLACE(cpf_cnpj, '.', ''), '/', ''), '-', ''), ' ', '') LIKE ?";
+      params.push(`%${buscaNumerica}%`);
+    }
+>>>>>>> 8d7f2ea (Versão inicial limpa do sistema CDS)
   }
 
   sql += ' ORDER BY nome ASC';

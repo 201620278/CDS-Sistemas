@@ -720,11 +720,22 @@ function inicializarCategoriasESubcategorias(produto, isEdit) {
         }
     }
 
+<<<<<<< HEAD
     if (window.categoriasSistema && Array.isArray(window.categoriasSistema) && window.categoriasSistema.length > 0) {
         renderCategorias(window.categoriasSistema);
         return;
     }
 
+=======
+    // Renderiza rapidamente com cache local (quando houver) e em seguida
+    // sempre sincroniza da API para refletir novas subcategorias sem recarregar a página.
+    if (window.categoriasSistema && Array.isArray(window.categoriasSistema) && window.categoriasSistema.length > 0) {
+        renderCategorias(window.categoriasSistema);
+    }
+
+    const possuiCacheCategorias = window.categoriasSistema && Array.isArray(window.categoriasSistema) && window.categoriasSistema.length > 0;
+
+>>>>>>> 8d7f2ea (Versão inicial limpa do sistema CDS)
     $.when(categoriasAPI.listar('produto'), subcategoriasAPI.listar()).done(function (categorias, subcategorias) {
         categorias = categorias[0] || [];
         subcategorias = subcategorias[0] || [];
@@ -736,6 +747,12 @@ function inicializarCategoriasESubcategorias(produto, isEdit) {
 
         renderCategorias(categoriasComSubs);
     }).fail(function () {
+<<<<<<< HEAD
+=======
+        if (possuiCacheCategorias) {
+            return;
+        }
+>>>>>>> 8d7f2ea (Versão inicial limpa do sistema CDS)
         $('#categoria_id').html('<option value="">Erro ao carregar categorias</option>');
         $('#subcategoria_id').html('<option value="">Erro ao carregar subcategorias</option>');
     });
@@ -746,6 +763,10 @@ function inicializarCategoriasESubcategorias(produto, isEdit) {
 function inicializarAutocompleteFornecedor() {
     $('#fornecedor').off('input').on('input', function () {
         const termo = ($(this).val() || '').trim();
+<<<<<<< HEAD
+=======
+        const termoNumerico = termo.replace(/\D/g, '');
+>>>>>>> 8d7f2ea (Versão inicial limpa do sistema CDS)
         const $lista = $('#fornecedor-autocomplete');
 
         if (termo.length < 2) {
@@ -760,11 +781,28 @@ function inicializarAutocompleteFornecedor() {
                 Authorization: 'Bearer ' + (localStorage.getItem('token') || '')
             },
             success: function (fornecedores) {
+<<<<<<< HEAD
                 const filtrados = (fornecedores || []).filter(f =>
                     f &&
                     f.nome &&
                     String(f.nome).toLowerCase().includes(termo.toLowerCase())
                 );
+=======
+                const termoLower = termo.toLowerCase();
+                const filtrados = (fornecedores || []).filter(f => {
+                    if (!f) return false;
+
+                    const nome = String(f.nome || '').toLowerCase();
+                    const razao = String(f.razao_social || '').toLowerCase();
+                    const cpfCnpj = String(f.cpf_cnpj || '');
+                    const cpfCnpjNumerico = cpfCnpj.replace(/\D/g, '');
+
+                    const correspondeTexto = nome.includes(termoLower) || razao.includes(termoLower) || cpfCnpj.toLowerCase().includes(termoLower);
+                    const correspondeCnpjNumerico = termoNumerico.length > 0 && cpfCnpjNumerico.includes(termoNumerico);
+
+                    return correspondeTexto || correspondeCnpjNumerico;
+                });
+>>>>>>> 8d7f2ea (Versão inicial limpa do sistema CDS)
 
                 if (filtrados.length === 0) {
                     $lista.hide().html('');
@@ -773,13 +811,23 @@ function inicializarAutocompleteFornecedor() {
 
                 let html = '';
                 filtrados.forEach(f => {
+<<<<<<< HEAD
+=======
+                    const label = f.cpf_cnpj
+                        ? `${escapeHtml(f.nome || '')} - CNPJ: ${escapeHtml(f.cpf_cnpj)}`
+                        : `${escapeHtml(f.nome || '')}`;
+>>>>>>> 8d7f2ea (Versão inicial limpa do sistema CDS)
                     html += `
                         <button
                             type="button"
                             class="list-group-item list-group-item-action fornecedor-item"
                             data-nome="${escapeHtml(f.nome)}"
                         >
+<<<<<<< HEAD
                             ${escapeHtml(f.nome)}
+=======
+                            ${label}
+>>>>>>> 8d7f2ea (Versão inicial limpa do sistema CDS)
                         </button>
                     `;
                 });
