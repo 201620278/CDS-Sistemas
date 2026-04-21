@@ -102,6 +102,11 @@ async function carregarHistoricoFinanceiro(periodo) {
 function preencherTabelaHistorico(lista) {
   const tbody = document.getElementById('tabelaHistoricoFinanceiro');
 
+  if (!tbody) {
+    console.error('Elemento tabelaHistoricoFinanceiro não encontrado');
+    return;
+  }
+
   if (!lista || !lista.length) {
     tbody.innerHTML = `
       <tr>

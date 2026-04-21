@@ -109,14 +109,20 @@ function preencherCardsDashboard(resumo) {
   const totalReceber = Number(resumo.totalReceber || 0);
   const saldoPeriodo = totalRecebido - totalPago;
 
-  document.getElementById('totalRecebido').textContent = formatarMoeda(totalRecebido);
-  document.getElementById('totalPago').textContent = formatarMoeda(totalPago);
-  document.getElementById('totalReceber').textContent = formatarMoeda(totalReceber);
-  document.getElementById('saldoPeriodo').textContent = formatarMoeda(saldoPeriodo);
+  const elTotalRecebido = document.getElementById('totalRecebido');
+  const elTotalPago = document.getElementById('totalPago');
+  const elTotalReceber = document.getElementById('totalReceber');
+  const elSaldoPeriodo = document.getElementById('saldoPeriodo');
+
+  if (elTotalRecebido) elTotalRecebido.textContent = formatarMoeda(totalRecebido);
+  if (elTotalPago) elTotalPago.textContent = formatarMoeda(totalPago);
+  if (elTotalReceber) elTotalReceber.textContent = formatarMoeda(totalReceber);
+  if (elSaldoPeriodo) elSaldoPeriodo.textContent = formatarMoeda(saldoPeriodo);
 }
 
 function preencherProximosRecebimentos(lista) {
   const container = document.getElementById('proximosRecebimentos');
+  if (!container) return;
 
   if (lista.length > 0) {
     container.innerHTML = lista.map(item => {
@@ -143,6 +149,7 @@ function preencherProximosRecebimentos(lista) {
 
 function preencherProximosPagamentos(lista) {
   const container = document.getElementById('proximosPagamentos');
+  if (!container) return;
 
   if (lista.length > 0) {
     container.innerHTML = lista.map(item => {
@@ -169,6 +176,7 @@ function preencherProximosPagamentos(lista) {
 
 function preencherAlertasFinanceiros(alertas) {
   const container = document.getElementById('listaAlertas');
+  if (!container) return;
 
   if (alertas.length > 0) {
     container.innerHTML = alertas.map(alerta => `

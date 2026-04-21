@@ -81,7 +81,7 @@ function renderConfiguracoes(configuracoes, usuarios) {
         'backup_google_refresh_token'
     ]);
 
-    configuracoes = configuracoes.filter(config => !fiscalConfigKeys.has(config.chave) && !backupConfigKeys.has(config.chave));
+    configuracoes = configuracoes.filter(config => !fiscalConfigKeys.has(config.chave) && !backupConfigKeys.has(config.chave) && config.chave !== 'endereco');
 
     const ordemCamposEmpresa = [
         'nome_empresa',
@@ -99,8 +99,7 @@ function renderConfiguracoes(configuracoes, usuarios) {
         'complemento',
         'bairro',
         'cidade',
-        'uf',
-        'endereco'
+        'uf'
     ];
 
     configuracoes.sort((a, b) => {
@@ -329,6 +328,14 @@ function renderConfigField(config) {
         `;
     }
 
+    if (config.chave === 'cep') {
+        return `<input type="text" class="form-control" id="${config.chave}" value="${value}" onblur="buscarCep(this.value)" oninput="formatCep(this)">`;
+    }
+
+    if (config.chave === 'telefone' || config.chave === 'whatsapp') {
+        return `<input type="text" class="form-control" id="${config.chave}" value="${value}" oninput="formatPhone(this)">`;
+    }
+
     switch(config.tipo) {
         case 'boolean':
             return `
@@ -472,26 +479,54 @@ function fazerBackup() {
         });
 }
 
-// Limpar cache
-function limparCache() {
-    if (confirm('Tem certeza que deseja limpar o cache do sistema? Isso pode melhorar o desempenho. (Sua sessão de login será mantida.)')) {
-        // Limpar sessionStorage
-        sessionStorage.clear();
-        
-        // Limpar cache do navegador
-        if ('caches' in window) {
-            caches.keys().then(names => {
-                names.forEach(name => {
-                    caches.delete(name);
-                });
-            });
-        }
-        
-        showNotification('Cache limpo com sucesso!');
-        
-        // Recarregar página
-        setTimeout(() => {
-            location.reload();
-        }, 1500);
+// Buscar CEP
+function buscarCep(cep) {
+    if (!cep || cep.length < 8) return;
+
+    // Remover caracteres não numéricos
+    cep = cep.replace(/\D/g, '');
+
+    if (cep.length !== 8) return;
+
+    // Mostrar loading
+    showNotification('Buscando endereço...', 'info');
+
+    fetch(`https://viacep.com.br/ws/${cep}/json/`)
+        .then(response => response.json())
+        .then(data => {
+            if (data.erro) {
+                showNotification('CEP não encontrado.', 'warning');
+                return;
+            }
+
+            // Preencher os campos
+            $('#logradouro').val(data.logradouro || '');
+            $('#bairro').val(data.bairro || '');
+            $('#cidade').val(data.localidade || '');
+            $('#uf').val(data.uf || '');
+
+            showNotification('Endereço preenchido automaticamente.');
+        })
+        .catch(error => {
+            console.error('Erro ao buscar CEP:', error);
+            showNotification('Erro ao buscar CEP. Tente novamente.', 'danger');
+        });
+}
+
+// Formatar telefone
+function formatPhone(input) {
+    let value = input.value.replace(/\D/g, '');
+    if (value.length <= 11) {
+        value = value.replace(/(\d{2})(\d{1})(\d{4})(\d{4})/, '($1)$2.$3-$4');
+        input.value = value;
+    }
+}
+
+// Formatar CEP
+function formatCep(input) {
+    let value = input.value.replace(/\D/g, '');
+    if (value.length <= 8) {
+        value = value.replace(/(\d{5})(\d{3})/, '$1-$2');
+        input.value = value;
     }
 }

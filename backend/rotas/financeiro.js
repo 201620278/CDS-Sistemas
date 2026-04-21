@@ -1794,11 +1794,7 @@ router.get('/relatorios/inadimplencia', (req, res) => {
   let sql = `
     SELECT
       f.*,
-      CASE
-        WHEN f.tipo = 'receita' THEN c.nome
-        WHEN f.tipo = 'despesa' THEN fo.nome
-        ELSE f.pessoa_nome
-      END as pessoa_nome,
+      f.pessoa_nome as pessoa_nome,
       CASE
         WHEN f.tipo = 'receita' THEN 'cliente'
         WHEN f.tipo = 'despesa' THEN 'fornecedor'
@@ -1806,8 +1802,6 @@ router.get('/relatorios/inadimplencia', (req, res) => {
       END as tipo_pessoa,
       julianday('now') - julianday(f.vencimento) as dias_atraso
     FROM financeiro f
-    LEFT JOIN clientes c ON f.pessoa_id = c.id AND f.tipo = 'receita'
-    LEFT JOIN fornecedores fo ON f.pessoa_id = fo.id AND f.tipo = 'despesa'
     WHERE (f.status != 'recebido' AND f.status != 'pago') AND f.vencimento < date('now')
   `;
 

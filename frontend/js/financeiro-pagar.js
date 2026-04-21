@@ -152,6 +152,8 @@ function renderContasPagar(periodo) {
               </div>
 
               <div id="erroNovaDespesa" class="text-danger mt-3"></div>
+
+              <div id="previaParcelas" class="mt-3"></div>
             </div>
 
             <div class="modal-footer">
@@ -266,7 +268,7 @@ function inicializarModalNovaDespesa() {
     form.dataset.bound = 'true';
   }
 
-// Adicionar toggle para campos de parcelamento
+  // Adicionar toggle para campos de parcelamento
   const checkboxParcelado = document.getElementById('despesaParcelado');
   const parcelasGroup = document.getElementById('parcelasGroup');
   const intervaloGroup = document.getElementById('intervaloGroup');
@@ -284,6 +286,29 @@ function inicializarModalNovaDespesa() {
       }
     });
     checkboxParcelado.dataset.bound = 'true';
+  }
+
+  // Adicionar event listeners para atualizar prévia
+  const despesaValor = document.getElementById('despesaValor');
+  const despesaParcelas = document.getElementById('despesaParcelas');
+  const despesaIntervalo = document.getElementById('despesaIntervalo');
+  const despesaVencimento = document.getElementById('despesaVencimento');
+
+  if (despesaValor && !despesaValor.dataset.bound) {
+    despesaValor.addEventListener('input', atualizarPreviaParcelas);
+    despesaValor.dataset.bound = 'true';
+  }
+  if (despesaParcelas && !despesaParcelas.dataset.bound) {
+    despesaParcelas.addEventListener('input', atualizarPreviaParcelas);
+    despesaParcelas.dataset.bound = 'true';
+  }
+  if (despesaIntervalo && !despesaIntervalo.dataset.bound) {
+    despesaIntervalo.addEventListener('input', atualizarPreviaParcelas);
+    despesaIntervalo.dataset.bound = 'true';
+  }
+  if (despesaVencimento && !despesaVencimento.dataset.bound) {
+    despesaVencimento.addEventListener('input', atualizarPreviaParcelas);
+    despesaVencimento.dataset.bound = 'true';
   }
 }
 
@@ -351,81 +376,82 @@ async function carregarCategoriasDespesa() {
 async function salvarNovaDespesa(event) {
   event.preventDefault();
 
-  const erroEl = document.getElementById('erroNovaDespesa');
-  if (erroEl) erroEl.innerText = '';
+  try {
+    const erroEl = document.getElementById('erroNovaDespesa');
+    if (erroEl) erroEl.innerText = '';
 
-  const payload = {
-    tipo: 'despesa',
-    descricao: (document.getElementById('despesaDescricao')?.value || '').trim(),
-    categoria: document.getElementById('despesaCategoria')?.value || '',
-    valor: Number(document.getElementById('despesaValor')?.value || 0),
-    data_movimento: document.getElementById('despesaData')?.value || '',
-    vencimento: document.getElementById('despesaVencimento')?.value || '',
-    pessoa_nome: (document.getElementById('despesaFornecedor')?.value || '').trim() || null,
-    forma_pagamento: document.getElementById('despesaFormaPagamento')?.value || 'dinheiro',
-    status: document.getElementById('despesaStatus')?.value || 'pendente',
-    observacao: (document.getElementById('despesaObservacao')?.value || '').trim(),
-    origem: 'manual'
-  };
-
-  if (!payload.descricao || !payload.categoria || payload.valor <= 0 || !payload.data_movimento || !payload.vencimento) {
-    if (erroEl) erroEl.innerText = 'Preencha os campos obrigatórios.';
-    return;
-  }
-
-  try {    const isParcelado = document.getElementById('despesaParcelado')?.checked || false;
-  const numParcelas = isParcelado ? Number(document.getElementById('despesaParcelas')?.value || 2) : 1;
-  const intervaloDias = isParcelado ? Number(document.getElementById('despesaIntervalo')?.value || 30) : 0;
-
-  if (isParcelado && (numParcelas < 2 || intervaloDias < 1)) {
-    if (erroEl) erroEl.innerText = 'Preencha número de parcelas (mín. 2) e intervalo (mín. 1 dia) para parcelamento.';
-    return;
-  }
-
-  const valorParcela = payload.valor / numParcelas;
-  let vencimentoBase = new Date(payload.vencimento);
-
-  for (let i = 1; i <= numParcelas; i++) {
-    const parcelaPayload = {
-      ...payload,
-      valor: valorParcela,
-      vencimento: new Date(vencimentoBase.getTime() + (i - 1) * intervaloDias * 24 * 60 * 60 * 1000).toISOString().slice(0, 10),
-      numero_parcela: i,
-      total_parcelas: numParcelas,
-      descricao: `${payload.descricao} (Parcela ${i}/${numParcelas})`
+    const payload = {
+      tipo: 'despesa',
+      descricao: (document.getElementById('despesaDescricao')?.value || '').trim(),
+      categoria: document.getElementById('despesaCategoria')?.value || '',
+      valor: Number(document.getElementById('despesaValor')?.value || 0),
+      data_movimento: document.getElementById('despesaData')?.value || '',
+      vencimento: document.getElementById('despesaVencimento')?.value || '',
+      pessoa_nome: (document.getElementById('despesaFornecedor')?.value || '').trim() || null,
+      forma_pagamento: document.getElementById('despesaFormaPagamento')?.value || 'dinheiro',
+      status: document.getElementById('despesaStatus')?.value || 'pendente',
+      observacao: (document.getElementById('despesaObservacao')?.value || '').trim(),
+      origem: 'manual'
     };
 
-    try {
-      const response = await fetch(`${API_URL}/financeiro`, {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          'Authorization': 'Bearer ' + localStorage.getItem('token')
-        },
-        body: JSON.stringify(parcelaPayload)
-      });
-
-      const result = await response.json();
-
-      if (!response.ok) {
-        throw new Error(result.error || `Erro na parcela ${i}`);
-      }
-    } catch (error) {
-      console.error(`Erro ao salvar parcela ${i}:`, error);
-      if (erroEl) erroEl.innerText = `Erro ao salvar parcela ${i}: ${error.message}`;
+    if (!payload.descricao || !payload.categoria || payload.valor <= 0 || !payload.data_movimento || !payload.vencimento) {
+      if (erroEl) erroEl.innerText = 'Preencha os campos obrigatórios.';
       return;
     }
-  }
 
-  if (window.__financeiroPagarState.modalNovaDespesaInstance) {
-    window.__financeiroPagarState.modalNovaDespesaInstance.hide();
-  }
+    const isParcelado = document.getElementById('despesaParcelado')?.checked || false;
+    const numParcelas = isParcelado ? Number(document.getElementById('despesaParcelas')?.value || 2) : 1;
+    const intervaloDias = isParcelado ? Number(document.getElementById('despesaIntervalo')?.value || 30) : 0;
 
-  if (typeof showNotification === 'function') {
-    showNotification('Despesa cadastrada com sucesso.', 'success');
-  } else {
-    alert('Despesa cadastrada com sucesso.');
-  }
+    if (isParcelado && (numParcelas < 2 || intervaloDias < 1)) {
+      if (erroEl) erroEl.innerText = 'Preencha número de parcelas (mín. 2) e intervalo (mín. 1 dia) para parcelamento.';
+      return;
+    }
+
+    const valorParcela = payload.valor / numParcelas;
+    let vencimentoBase = new Date(payload.vencimento);
+
+    for (let i = 1; i <= numParcelas; i++) {
+      const parcelaPayload = {
+        ...payload,
+        valor: valorParcela,
+        vencimento: new Date(vencimentoBase.getTime() + (i - 1) * intervaloDias * 24 * 60 * 60 * 1000).toISOString().slice(0, 10),
+        numero_parcela: i,
+        total_parcelas: numParcelas,
+        descricao: `${payload.descricao} (Parcela ${i}/${numParcelas})`
+      };
+
+      try {
+        const response = await fetch(`${API_URL}/financeiro`, {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            'Authorization': 'Bearer ' + localStorage.getItem('token')
+          },
+          body: JSON.stringify(parcelaPayload)
+        });
+
+        const result = await response.json();
+
+        if (!response.ok) {
+          throw new Error(result.error || `Erro na parcela ${i}`);
+        }
+      } catch (error) {
+        console.error(`Erro ao salvar parcela ${i}:`, error);
+        if (erroEl) erroEl.innerText = `Erro ao salvar parcela ${i}: ${error.message}`;
+        return;
+      }
+    }
+
+    if (window.__financeiroPagarState.modalNovaDespesaInstance) {
+      window.__financeiroPagarState.modalNovaDespesaInstance.hide();
+    }
+
+    if (typeof showNotification === 'function') {
+      showNotification('Despesa cadastrada com sucesso.', 'success');
+    } else {
+      alert('Despesa cadastrada com sucesso.');
+    }
 
     const periodo = obterPeriodoFinanceiro();
     carregarContasPagar(coletarFiltrosPagar(periodo));
@@ -439,6 +465,7 @@ async function salvarNovaDespesa(event) {
     }
   } catch (error) {
     console.error('Erro ao salvar nova despesa:', error);
+    const erroEl = document.getElementById('erroNovaDespesa');
     if (erroEl) erroEl.innerText = 'Erro ao conectar com o servidor.';
   }
 }
@@ -580,6 +607,72 @@ function escapeHtmlFinanceiro(texto) {
     .replace(/'/g, '&#039;');
 }
 
+// Função para atualizar a prévia das parcelas
+function atualizarPreviaParcelas() {
+  const isParcelado = document.getElementById('despesaParcelado')?.checked || false;
+  const valorTotal = Number(document.getElementById('despesaValor')?.value || 0);
+  const numParcelas = Number(document.getElementById('despesaParcelas')?.value || 2);
+  const intervaloDias = Number(document.getElementById('despesaIntervalo')?.value || 30);
+  const vencimentoBase = document.getElementById('despesaVencimento')?.value;
+
+  const previaDiv = document.getElementById('previaParcelas');
+  if (!previaDiv) return;
+
+  if (!isParcelado || valorTotal <= 0 || numParcelas < 2 || !vencimentoBase) {
+    previaDiv.innerHTML = '';
+    return;
+  }
+
+  const valorParcela = valorTotal / numParcelas;
+  let html = '<h6>Prévia das Parcelas:</h6><ul class="list-group">';
+
+  let dataAtual = new Date(vencimentoBase);
+  for (let i = 1; i <= numParcelas; i++) {
+    const dataFormatada = dataAtual.toLocaleDateString('pt-BR');
+    html += `<li class="list-group-item d-flex justify-content-between align-items-center">
+      Parcela ${i}/${numParcelas}
+      <span>${formatarMoedaPagar(valorParcela)} - Vence em ${dataFormatada}</span>
+    </li>`;
+    dataAtual = new Date(dataAtual.getTime() + intervaloDias * 24 * 60 * 60 * 1000);
+  }
+
+  html += '</ul>';
+  previaDiv.innerHTML = html;
+}
+
+// Função para atualizar a prévia das parcelas
+function atualizarPreviaParcelas() {
+  const isParcelado = document.getElementById('despesaParcelado')?.checked || false;
+  const valorTotal = Number(document.getElementById('despesaValor')?.value || 0);
+  const numParcelas = Number(document.getElementById('despesaParcelas')?.value || 2);
+  const intervaloDias = Number(document.getElementById('despesaIntervalo')?.value || 30);
+  const vencimentoBase = document.getElementById('despesaVencimento')?.value;
+
+  const previaDiv = document.getElementById('previaParcelas');
+  if (!previaDiv) return;
+
+  if (!isParcelado || valorTotal <= 0 || numParcelas < 2 || !vencimentoBase) {
+    previaDiv.innerHTML = '';
+    return;
+  }
+
+  const valorParcela = valorTotal / numParcelas;
+  let html = '<h6>Prévia das Parcelas:</h6><ul class="list-group">';
+
+  let dataAtual = new Date(vencimentoBase);
+  for (let i = 1; i <= numParcelas; i++) {
+    const dataFormatada = dataAtual.toLocaleDateString('pt-BR');
+    html += `<li class="list-group-item d-flex justify-content-between align-items-center">
+      Parcela ${i}/${numParcelas}
+      <span>${formatarMoedaPagar(valorParcela)} - Vence em ${dataFormatada}</span>
+    </li>`;
+    dataAtual = new Date(dataAtual.getTime() + intervaloDias * 24 * 60 * 60 * 1000);
+  }
+
+  html += '</ul>';
+  previaDiv.innerHTML = html;
+}
+
 // Expor globalmente
 window.renderContasPagar = renderContasPagar;
 window.carregarContasPagar = carregarContasPagar;
@@ -587,6 +680,9 @@ window.novaDespesa = novaDespesa;
 window.abrirDetalhesPagar = abrirDetalhesPagar;
 window.pagarConta = pagarConta;
 window.filtrarPagar = filtrarPagar;
+
+
+
 
 
 

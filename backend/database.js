@@ -469,6 +469,7 @@ function inicializarBanco() {
     inserirConfiguracoesPadrao();
     criarUsuarioAdminPadrao();
     garantirCategoriasPadraoDespesa();
+    garantirColunasFinanceiro();
   });
 }
 
@@ -562,8 +563,9 @@ function garantirColunasFinanceiro() {
       !colunas.includes('numero_parcela') && `ALTER TABLE financeiro ADD COLUMN numero_parcela INTEGER`,
       !colunas.includes('total_parcelas') && `ALTER TABLE financeiro ADD COLUMN total_parcelas INTEGER`,
       !colunas.includes('compra_id') && `ALTER TABLE financeiro ADD COLUMN compra_id INTEGER`,
-      !colunas.includes('venda_id') && `ALTER TABLE financeiro ADD COLUMN venda_id INTEGER`,
-      !colunas.includes('pessoa_nome') && `ALTER TABLE financeiro ADD COLUMN pessoa_nome TEXT`,
+      !colunas.includes('pessoa_id') && `ALTER TABLE financeiro ADD COLUMN pessoa_id INTEGER`,
+      !colunas.includes('pessoa_id') && `ALTER TABLE financeiro ADD COLUMN pessoa_id INTEGER`,
+      !colunas.includes('pessoa_id') && `ALTER TABLE financeiro ADD COLUMN pessoa_id INTEGER`,
       !colunas.includes('observacao') && `ALTER TABLE financeiro ADD COLUMN observacao TEXT`,
       !colunas.includes('baixado_em') && `ALTER TABLE financeiro ADD COLUMN baixado_em DATE`
     ].filter(Boolean);

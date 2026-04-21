@@ -96,11 +96,13 @@ function renderFiscal() {
     $('#page-content').html(html);
 }
 
-function getFiscalField(label, id, value = '', help = '', type = 'text') {
+function getFiscalField(label, id, value = '', help = '', type = 'text', onblur = '', oninput = '') {
+    const onblurAttr = onblur ? ` onblur="${onblur}"` : '';
+    const oninputAttr = oninput ? ` oninput="${oninput}"` : '';
     return `
         <div class="col-md-4 mb-3">
             <label class="form-label">${label}</label>
-            <input type="${type}" class="form-control fiscal-field" id="${id}" value="${String(value || '').replace(/"/g, '&quot;')}">
+            <input type="${type}" class="form-control fiscal-field" id="${id}" value="${String(value || '').replace(/"/g, '&quot;')}"${onblurAttr}${oninputAttr}>
             ${help ? `<div class="form-text">${help}</div>` : ''}
         </div>
     `;
@@ -123,13 +125,12 @@ function carregarFiscalConfig() {
                     ${getFiscalField('Nome da empresa', 'nome_empresa', cfg.nomeEmpresa || '')}
                     ${getFiscalField('CNPJ', 'cnpj', cfg.cnpj || '')}
                     ${getFiscalField('Inscrição Estadual', 'fiscal_ie', cfg.ie || '')}
-                    ${getFiscalField('Telefone', 'telefone', cfg.telefone || '')}
+                    ${getFiscalField('Telefone', 'telefone', cfg.telefone || '', '', 'text', '', 'formatPhone(this)')}
                     ${getFiscalField('Email', 'email', cfg.email || '')}
-                    ${getFiscalField('Endereço livre', 'endereco', cfg.endereco || '', 'Usado como apoio para montar endereço do emitente')}
 
                     ${getFiscalField('Código do município', 'fiscal_municipio_codigo', cfg.municipioCodigo || '2307304')}
                     ${getFiscalField('Município', 'fiscal_municipio_nome', cfg.municipioNome || 'Juazeiro do Norte')}
-                    ${getFiscalField('CEP emitente', 'fiscal_emitente_cep', cfg.cep || '')}
+                    ${getFiscalField('CEP emitente', 'fiscal_emitente_cep', cfg.cep || '', '', 'text', 'buscarCepFiscal(this.value)', 'formatCep(this)')}
                     ${getFiscalField('Logradouro', 'fiscal_emitente_logradouro', cfg.logradouro || '')}
                     ${getFiscalField('Número', 'fiscal_emitente_numero', cfg.numeroEndereco || 'S/N')}
                     ${getFiscalField('Bairro', 'fiscal_emitente_bairro', cfg.bairro || '')}
@@ -423,4 +424,56 @@ function imprimirHtmlFiscal(html) {
     win.focus();
 
     setTimeout(() => win.print(), 500);
+}
+
+// Buscar CEP para configuração fiscal
+function buscarCepFiscal(cep) {
+    if (!cep || cep.length < 8) return;
+
+    // Remover caracteres não numéricos
+    cep = cep.replace(/\D/g, '');
+
+    if (cep.length !== 8) return;
+
+    // Mostrar loading
+    showNotification('Buscando endereço fiscal...', 'info');
+
+    fetch(`https://viacep.com.br/ws/${cep}/json/`)
+        .then(response => response.json())
+        .then(data => {
+            if (data.erro) {
+                showNotification('CEP não encontrado.', 'warning');
+                return;
+            }
+
+            // Preencher os campos fiscais
+            $('#fiscal_emitente_logradouro').val(data.logradouro || '');
+            $('#fiscal_emitente_bairro').val(data.bairro || '');
+            $('#fiscal_municipio_nome').val(data.localidade || '');
+            $('#fiscal_uf_sigla').val(data.uf || '');
+
+            showNotification('Endereço fiscal preenchido automaticamente.');
+        })
+        .catch(error => {
+            console.error('Erro ao buscar CEP fiscal:', error);
+            showNotification('Erro ao buscar CEP. Tente novamente.', 'danger');
+        });
+}
+
+// Formatar telefone
+function formatPhone(input) {
+    let value = input.value.replace(/\D/g, '');
+    if (value.length <= 11) {
+        value = value.replace(/(\d{2})(\d{1})(\d{4})(\d{4})/, '($1)$2.$3-$4');
+        input.value = value;
+    }
+}
+
+// Formatar CEP
+function formatCep(input) {
+    let value = input.value.replace(/\D/g, '');
+    if (value.length <= 8) {
+        value = value.replace(/(\d{5})(\d{3})/, '$1-$2');
+        input.value = value;
+    }
 }
