@@ -3,6 +3,15 @@ window.__financeiroPagarState = window.__financeiroPagarState || {
   modalDetalhesPagamento: null
 };
 
+function isAdminFinanceiroPagar() {
+  try {
+    const user = JSON.parse(localStorage.getItem('user') || '{}');
+    return user.role === 'admin';
+  } catch (e) {
+    return false;
+  }
+}
+
 // Contas a Pagar
 function renderContasPagar(periodo) {
   const conteudo = document.getElementById('financeiroConteudo');
@@ -543,6 +552,18 @@ function abrirDetalhesPagar(id) {
         throw new Error(dados.error || 'Falha ao carregar detalhes da conta a pagar.');
       }
 
+      const adminAcoes = isAdminFinanceiroPagar() ? `
+        <hr>
+        <div class="d-flex gap-2 justify-content-end flex-wrap">
+          <button class="btn btn-primary" onclick="abrirEdicaoPagar(${dados.id})">
+            <i class="fas fa-edit"></i> Editar
+          </button>
+          <button class="btn btn-danger" onclick="excluirContaPagar(${dados.id})">
+            <i class="fas fa-trash"></i> Excluir
+          </button>
+        </div>
+      ` : '';
+
       body.innerHTML = `
         <div class="row g-3">
           <div class="col-12 col-md-6"><strong>Fornecedor:</strong> ${escapeHtmlFinanceiro(dados.pessoa_nome || '-')}</div>
@@ -562,12 +583,202 @@ function abrirDetalhesPagar(id) {
             <p class="mb-0">${escapeHtmlFinanceiro(dados.observacao || '-')}</p>
           </div>
         </div>
+        ${adminAcoes}
       `;
     })
     .catch(error => {
       console.error('Erro ao carregar detalhes da conta a pagar:', error);
       body.innerHTML = `<div class="text-danger">Não foi possível carregar os detalhes. ${escapeHtmlFinanceiro(error.message || '')}</div>`;
     });
+}
+
+async function abrirEdicaoPagar(id) {
+  const body = document.getElementById('modalDetalhesFinanceiroBody');
+  if (!body) return;
+
+  body.innerHTML = '<div class="text-center text-muted">Carregando dados para edição...</div>';
+
+  try {
+    const response = await fetch(`/api/financeiro/${id}`, {
+      headers: {
+        'Authorization': 'Bearer ' + localStorage.getItem('token')
+      }
+    });
+
+    const dados = await response.json();
+
+    if (!response.ok || dados.error) {
+      throw new Error(dados.error || 'Erro ao carregar conta a pagar para edição.');
+    }
+
+    body.innerHTML = `
+      <form id="formEditarPagar" class="row g-3">
+        <div class="col-md-8">
+          <label class="form-label">Descrição</label>
+          <input type="text" class="form-control" id="editarPagarDescricao" value="${escapeHtmlFinanceiro(dados.descricao || '')}" required>
+        </div>
+
+        <div class="col-md-4">
+          <label class="form-label">Valor</label>
+          <input type="number" class="form-control" id="editarPagarValor" value="${Number(dados.valor || 0)}" min="0.01" step="0.01" required>
+        </div>
+
+        <div class="col-md-4">
+          <label class="form-label">Data Movimento</label>
+          <input type="date" class="form-control" id="editarPagarData" value="${dados.data_movimento || ''}" required>
+        </div>
+
+        <div class="col-md-4">
+          <label class="form-label">Vencimento</label>
+          <input type="date" class="form-control" id="editarPagarVencimento" value="${dados.vencimento || ''}">
+        </div>
+
+        <div class="col-md-4">
+          <label class="form-label">Status</label>
+          <select class="form-control" id="editarPagarStatus">
+            <option value="pendente" ${dados.status === 'pendente' ? 'selected' : ''}>Pendente</option>
+            <option value="pago" ${dados.status === 'pago' ? 'selected' : ''}>Pago</option>
+            <option value="recebido" ${dados.status === 'recebido' ? 'selected' : ''}>Recebido</option>
+            <option value="parcial" ${dados.status === 'parcial' ? 'selected' : ''}>Parcial</option>
+            <option value="vencido" ${dados.status === 'vencido' ? 'selected' : ''}>Vencido</option>
+          </select>
+        </div>
+
+        <div class="col-md-6">
+          <label class="form-label">Fornecedor / Favorecido</label>
+          <input type="text" class="form-control" id="editarPagarPessoa" value="${escapeHtmlFinanceiro(dados.pessoa_nome || '')}">
+        </div>
+
+        <div class="col-md-6">
+          <label class="form-label">Documento</label>
+          <input type="text" class="form-control" id="editarPagarDocumento" value="${escapeHtmlFinanceiro(dados.documento || '')}">
+        </div>
+
+        <div class="col-md-6">
+          <label class="form-label">Categoria</label>
+          <input type="text" class="form-control" id="editarPagarCategoria" value="${escapeHtmlFinanceiro(dados.categoria || '')}">
+        </div>
+
+        <div class="col-md-6">
+          <label class="form-label">Forma de pagamento</label>
+          <input type="text" class="form-control" id="editarPagarForma" value="${escapeHtmlFinanceiro(dados.forma_pagamento || '')}">
+        </div>
+
+        <div class="col-12">
+          <label class="form-label">Observação</label>
+          <textarea class="form-control" id="editarPagarObservacao" rows="3">${escapeHtmlFinanceiro(dados.observacao || '')}</textarea>
+        </div>
+
+        <div class="col-12 d-flex gap-2 justify-content-end flex-wrap">
+          <button type="button" class="btn btn-secondary" onclick="abrirDetalhesPagar(${id})">Cancelar</button>
+          <button type="submit" class="btn btn-primary">Salvar Alterações</button>
+        </div>
+      </form>
+    `;
+
+    const form = document.getElementById('formEditarPagar');
+    form.addEventListener('submit', async function (event) {
+      event.preventDefault();
+      await salvarEdicaoPagar(id);
+    });
+  } catch (error) {
+    console.error('Erro ao abrir edição da conta a pagar:', error);
+    body.innerHTML = `<div class="text-danger">Erro ao carregar formulário de edição. ${escapeHtmlFinanceiro(error.message || '')}</div>`;
+  }
+}
+
+async function salvarEdicaoPagar(id) {
+  try {
+    const payload = {
+      descricao: document.getElementById('editarPagarDescricao')?.value?.trim() || '',
+      valor: Number(document.getElementById('editarPagarValor')?.value || 0),
+      data_movimento: document.getElementById('editarPagarData')?.value || '',
+      vencimento: document.getElementById('editarPagarVencimento')?.value || '',
+      status: document.getElementById('editarPagarStatus')?.value || 'pendente',
+      pessoa_nome: document.getElementById('editarPagarPessoa')?.value?.trim() || '',
+      documento: document.getElementById('editarPagarDocumento')?.value?.trim() || '',
+      categoria: document.getElementById('editarPagarCategoria')?.value?.trim() || '',
+      forma_pagamento: document.getElementById('editarPagarForma')?.value?.trim() || '',
+      observacao: document.getElementById('editarPagarObservacao')?.value?.trim() || ''
+    };
+
+    if (!payload.descricao || payload.valor <= 0 || !payload.data_movimento) {
+      alert('Preencha descrição, valor e data do movimento.');
+      return;
+    }
+
+    const response = await fetch(`/api/financeiro/${id}`, {
+      method: 'PUT',
+      headers: {
+        'Content-Type': 'application/json',
+        'Authorization': 'Bearer ' + localStorage.getItem('token')
+      },
+      body: JSON.stringify(payload)
+    });
+
+    const dados = await response.json();
+
+    if (!response.ok || dados.error) {
+      throw new Error(dados.error || 'Erro ao salvar alterações.');
+    }
+
+    alert('Conta a pagar atualizada com sucesso.');
+
+    const periodo = obterPeriodoFinanceiro();
+    carregarContasPagar(coletarFiltrosPagar(periodo));
+
+    if (typeof carregarDashboardFinanceiro === 'function') {
+      carregarDashboardFinanceiro(periodo);
+    }
+
+    if (typeof carregarHistoricoFinanceiro === 'function') {
+      carregarHistoricoFinanceiro(periodo);
+    }
+
+    abrirDetalhesPagar(id);
+  } catch (error) {
+    console.error('Erro ao salvar edição da conta a pagar:', error);
+    alert(error.message || 'Erro ao salvar alterações.');
+  }
+}
+
+async function excluirContaPagar(id) {
+  if (!confirm('Tem certeza que deseja excluir esta conta a pagar?')) return;
+
+  try {
+    const response = await fetch(`/api/financeiro/${id}`, {
+      method: 'DELETE',
+      headers: {
+        'Authorization': 'Bearer ' + localStorage.getItem('token')
+      }
+    });
+
+    const dados = await response.json();
+
+    if (!response.ok || dados.error) {
+      throw new Error(dados.error || 'Erro ao excluir conta a pagar.');
+    }
+
+    alert('Conta a pagar excluída com sucesso.');
+
+    if (window.__financeiroPagarState.modalDetalhesPagamento) {
+      window.__financeiroPagarState.modalDetalhesPagamento.hide();
+    }
+
+    const periodo = obterPeriodoFinanceiro();
+    carregarContasPagar(coletarFiltrosPagar(periodo));
+
+    if (typeof carregarDashboardFinanceiro === 'function') {
+      carregarDashboardFinanceiro(periodo);
+    }
+
+    if (typeof carregarHistoricoFinanceiro === 'function') {
+      carregarHistoricoFinanceiro(periodo);
+    }
+  } catch (error) {
+    console.error('Erro ao excluir conta a pagar:', error);
+    alert(error.message || 'Erro ao excluir conta a pagar.');
+  }
 }
 
 function coletarFiltrosPagar(periodo) {
@@ -680,6 +891,9 @@ window.novaDespesa = novaDespesa;
 window.abrirDetalhesPagar = abrirDetalhesPagar;
 window.pagarConta = pagarConta;
 window.filtrarPagar = filtrarPagar;
+window.abrirEdicaoPagar = abrirEdicaoPagar;
+window.salvarEdicaoPagar = salvarEdicaoPagar;
+window.excluirContaPagar = excluirContaPagar;
 
 
 

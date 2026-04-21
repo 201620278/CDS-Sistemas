@@ -19,6 +19,8 @@ $(document).ajaxError(function(event, xhr) {
 $(document).ready(function() {
     if (!localStorage.getItem('token')) return;
 
+    carregarLogoSidebar();
+
     $('.nav-link').on('click', function(e) {
         e.preventDefault();
         const page = $(this).data('page');
@@ -32,6 +34,61 @@ $(document).ready(function() {
     $('.nav-link[data-page="pdv"]').addClass('active');
     loadPage(currentPage);
 });
+
+function renderSidebarBrandPadrao() {
+    const brand = document.getElementById('sidebar-brand');
+    if (!brand) return;
+
+    brand.innerHTML = `
+        <h5 class="text-white">ESQUINÃO</h5>
+        <small class="text-muted">DA ECONOMIA</small>
+    `;
+}
+
+async function carregarLogoSidebar() {
+    const brand = document.getElementById('sidebar-brand');
+    if (!brand) return;
+
+    try {
+        const response = await fetch(`${API_URL}/configuracoes`, {
+            headers: {
+                'Authorization': `Bearer ${localStorage.getItem('token')}`
+            }
+        });
+
+        if (!response.ok) {
+            renderSidebarBrandPadrao();
+            return;
+        }
+
+        const configuracoes = await response.json();
+        const logoConfig = Array.isArray(configuracoes)
+            ? configuracoes.find((config) => config.chave === 'logo')
+            : null;
+        const logoPath = logoConfig && logoConfig.valor ? String(logoConfig.valor).trim() : '';
+
+        if (!logoPath) {
+            renderSidebarBrandPadrao();
+            return;
+        }
+
+        const logoUrl = logoPath.startsWith('/')
+            ? `${API_URL.replace('/api', '')}${logoPath}`
+            : logoPath;
+
+        brand.innerHTML = `
+            <img
+                src="${logoUrl}"
+                alt="Logo da empresa"
+                class="img-fluid"
+                style="max-height: 110px; object-fit: contain;"
+            >
+        `;
+    } catch (error) {
+        console.error('Erro ao carregar logo da sidebar:', error);
+        renderSidebarBrandPadrao();
+    }
+}
 
 function isScriptAlreadyLoaded(src) {
     return Array.from(document.scripts).some(script => {

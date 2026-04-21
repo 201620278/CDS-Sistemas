@@ -36,6 +36,14 @@ function dbAllAsync(sql, params = []) {
   });
 }
 
+function requireAdminFinanceiro(req, res) {
+  if (!req.user || req.user.role !== 'admin') {
+    res.status(403).json({ error: 'Apenas o administrador pode editar ou excluir lançamentos financeiros.' });
+    return false;
+  }
+  return true;
+}
+
 function formatoStatus(tipo, status) {
   if (status) return status;
   return tipo === 'receita' ? 'recebido' : 'pago';
@@ -242,6 +250,8 @@ router.post('/', (req, res) => {
 });
 
 router.put('/:id', (req, res) => {
+  if (!requireAdminFinanceiro(req, res)) return;
+
   const { id } = req.params;
   const {
     descricao,
@@ -256,31 +266,54 @@ router.put('/:id', (req, res) => {
     status
   } = req.body;
 
-  db.run(`
-    UPDATE financeiro
-    SET descricao = ?, valor = ?, data_movimento = ?, categoria = ?, forma_pagamento = ?,
-        documento = ?, vencimento = ?, observacao = ?, pessoa_nome = ?, status = ?,
-        baixado_em = CASE WHEN ? IN ('pago','recebido') THEN COALESCE(baixado_em, DATE('now')) ELSE NULL END
-    WHERE id = ?
-  `, [
-    descricao,
-    valor,
-    data_movimento,
-    categoria || null,
-    forma_pagamento || null,
-    documento || null,
-    vencimento || data_movimento,
-    observacao || null,
-    pessoa_nome || null,
-    status || null,
-    status || null,
-    id
-  ], function(err) {
-    if (err) {
-      res.status(500).json({ error: err.message });
+  db.get('SELECT * FROM financeiro WHERE id = ?', [id], (findErr, row) => {
+    if (findErr) {
+      res.status(500).json({ error: findErr.message });
       return;
     }
-    res.json({ message: 'Movimentação atualizada com sucesso' });
+
+    if (!row) {
+      res.status(404).json({ error: 'Movimentação não encontrada.' });
+      return;
+    }
+
+    const novoStatus = status || row.status || 'pendente';
+    const novaDataMovimento = data_movimento || row.data_movimento;
+    const novoVencimento = vencimento || novaDataMovimento;
+
+    db.run(`
+      UPDATE financeiro
+      SET descricao = ?, valor = ?, data_movimento = ?, categoria = ?, forma_pagamento = ?,
+          documento = ?, vencimento = ?, observacao = ?, pessoa_nome = ?, status = ?,
+          baixado_em = CASE
+            WHEN ? IN ('pago','recebido') THEN COALESCE(baixado_em, DATE('now'))
+            ELSE NULL
+          END
+      WHERE id = ?
+    `, [
+      descricao ?? row.descricao,
+      valor ?? row.valor,
+      novaDataMovimento,
+      categoria ?? row.categoria,
+      forma_pagamento ?? row.forma_pagamento,
+      documento ?? row.documento,
+      novoVencimento,
+      observacao ?? row.observacao,
+      pessoa_nome ?? row.pessoa_nome,
+      novoStatus,
+      novoStatus,
+      id
+    ], function(err) {
+      if (err) {
+        res.status(500).json({ error: err.message });
+        return;
+      }
+
+      res.json({
+        success: true,
+        message: 'Movimentação atualizada com sucesso.'
+      });
+    });
   });
 });
 
@@ -1872,26 +1905,38 @@ router.get('/:id(\\d+)', (req, res) => {
 });
 
 router.delete('/:id(\\d+)', (req, res) => {
+  if (!requireAdminFinanceiro(req, res)) return;
+
   const { id } = req.params;
-  db.get('SELECT origem FROM financeiro WHERE id = ?', [id], (err, row) => {
+
+  db.get('SELECT * FROM financeiro WHERE id = ?', [id], (err, row) => {
     if (err) {
       res.status(500).json({ error: err.message });
       return;
     }
+
     if (!row) {
       res.status(404).json({ error: 'Movimentação não encontrada.' });
       return;
     }
+
     if (row.origem && row.origem !== 'manual') {
-      res.status(400).json({ error: 'Movimentações automáticas devem ser removidas na origem (compra/venda).' });
+      res.status(400).json({
+        error: 'Movimentações automáticas devem ser removidas na origem (compra/venda).'
+      });
       return;
     }
+
     db.run('DELETE FROM financeiro WHERE id = ?', [id], function(deleteErr) {
       if (deleteErr) {
         res.status(500).json({ error: deleteErr.message });
         return;
       }
-      res.json({ message: 'Movimentação deletada com sucesso' });
+
+      res.json({
+        success: true,
+        message: 'Movimentação excluída com sucesso.'
+      });
     });
   });
 });

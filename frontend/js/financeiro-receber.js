@@ -1,6 +1,24 @@
 // Contas a Receber
 let modalDetalhesRecebimento = null;
 
+function isAdminFinanceiro() {
+  try {
+    const user = JSON.parse(localStorage.getItem('user') || '{}');
+    return user.role === 'admin';
+  } catch (e) {
+    return false;
+  }
+}
+
+function escapeHtmlFinanceiroSafe(texto) {
+  return String(texto || '')
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;')
+    .replace(/'/g, '&#039;');
+}
+
 function renderContasReceber(periodo) {
   const conteudo = document.getElementById('financeiroConteudo');
 
@@ -773,6 +791,7 @@ function abrirDetalhesReceber(id) {
 
   const body = document.getElementById('modalDetalhesFinanceiroBody');
   const title = document.getElementById('modalDetalhesFinanceiroLabel');
+
   if (!body || !title) {
     alert('Modal de detalhes não encontrado.');
     return;
@@ -780,6 +799,7 @@ function abrirDetalhesReceber(id) {
 
   title.textContent = 'Detalhes do Recebimento';
   body.innerHTML = '<div class="text-center text-muted">Carregando detalhes...</div>';
+
   if (modalDetalhesRecebimento) {
     modalDetalhesRecebimento.show();
   }
@@ -795,33 +815,194 @@ function abrirDetalhesReceber(id) {
         throw new Error(dados.error || 'Falha ao carregar detalhes do recebimento.');
       }
 
-      const detalhesHtml = `
+      const adminAcoes = isAdminFinanceiro() ? `
+        <hr>
+        <div class="d-flex gap-2 justify-content-end flex-wrap">
+          <button class="btn btn-primary" onclick="abrirEdicaoReceber(${dados.id})">
+            <i class="fas fa-edit"></i> Editar
+          </button>
+          <button class="btn btn-danger" onclick="excluirContaReceber(${dados.id})">
+            <i class="fas fa-trash"></i> Excluir
+          </button>
+        </div>
+      ` : '';
+
+      body.innerHTML = `
         <div class="row g-3">
-          <div class="col-12 col-md-6"><strong>Cliente:</strong> ${dados.pessoa_nome || '-'}</div>
-          <div class="col-12 col-md-6"><strong>Documento:</strong> ${dados.documento || '-'}</div>
-          <div class="col-12 col-md-6"><strong>Valor:</strong> ${formatarMoeda(dados.valor)}</div>
-          <div class="col-12 col-md-6"><strong>Data Movimento:</strong> ${formatarData(dados.data_movimento)}</div>
+          <div class="col-12 col-md-6"><strong>Cliente:</strong> ${escapeHtmlFinanceiroSafe(dados.pessoa_nome || '-')}</div>
+          <div class="col-12 col-md-6"><strong>Documento:</strong> ${escapeHtmlFinanceiroSafe(dados.documento || '-')}</div>
+          <div class="col-12 col-md-6"><strong>Valor:</strong> ${formatarMoeda(Number(dados.valor || 0))}</div>
+          <div class="col-12 col-md-6"><strong>Data Movimento:</strong> ${dados.data_movimento ? formatarData(dados.data_movimento) : '-'}</div>
           <div class="col-12 col-md-6"><strong>Vencimento:</strong> ${dados.vencimento ? formatarData(dados.vencimento) : '-'}</div>
           <div class="col-12 col-md-6"><strong>Status:</strong> ${formatarStatusBadge(dados.status)}</div>
-          <div class="col-12 col-md-6"><strong>Origem:</strong> ${dados.origem || 'manual'}</div>
+          <div class="col-12 col-md-6"><strong>Origem:</strong> ${escapeHtmlFinanceiroSafe(dados.origem || 'manual')}</div>
           <div class="col-12 col-md-6"><strong>Parcela:</strong> ${dados.numero_parcela || '-'} / ${dados.total_parcelas || '-'}</div>
           <div class="col-12">
             <strong>Descrição:</strong>
-            <p class="mb-1">${dados.descricao || '-'}</p>
+            <p class="mb-1">${escapeHtmlFinanceiroSafe(dados.descricao || '-')}</p>
           </div>
           <div class="col-12">
             <strong>Observação:</strong>
-            <p class="mb-0">${dados.observacao || '-'}</p>
+            <p class="mb-0">${escapeHtmlFinanceiroSafe(dados.observacao || '-')}</p>
           </div>
         </div>
+        ${adminAcoes}
       `;
-
-      body.innerHTML = detalhesHtml;
     })
     .catch(error => {
       console.error('Erro ao carregar detalhes do recebimento:', error);
-      body.innerHTML = `<div class="text-danger">Não foi possível carregar os detalhes. ${error.message || ''}</div>`;
+      body.innerHTML = `<div class="text-danger">Não foi possível carregar os detalhes. ${escapeHtmlFinanceiroSafe(error.message || '')}</div>`;
     });
+}
+
+async function abrirEdicaoReceber(id) {
+  const body = document.getElementById('modalDetalhesFinanceiroBody');
+  if (!body) return;
+
+  body.innerHTML = '<div class="text-center text-muted">Carregando dados para edição...</div>';
+
+  try {
+    const response = await fetch(`/api/financeiro/${id}`, {
+      headers: {
+        'Authorization': 'Bearer ' + localStorage.getItem('token')
+      }
+    });
+
+    const dados = await response.json();
+
+    if (!response.ok || dados.error) {
+      throw new Error(dados.error || 'Erro ao carregar recebimento para edição.');
+    }
+
+    body.innerHTML = `
+      <form id="formEditarReceber" class="row g-3">
+        <div class="col-md-8">
+          <label class="form-label">Descrição</label>
+          <input type="text" class="form-control" id="editarReceberDescricao" value="${escapeHtmlFinanceiroSafe(dados.descricao || '')}" required>
+        </div>
+
+        <div class="col-md-4">
+          <label class="form-label">Valor</label>
+          <input type="number" class="form-control" id="editarReceberValor" value="${Number(dados.valor || 0)}" min="0.01" step="0.01" required>
+        </div>
+
+        <div class="col-md-4">
+          <label class="form-label">Data Movimento</label>
+          <input type="date" class="form-control" id="editarReceberData" value="${dados.data_movimento || ''}" required>
+        </div>
+
+        <div class="col-md-4">
+          <label class="form-label">Vencimento</label>
+          <input type="date" class="form-control" id="editarReceberVencimento" value="${dados.vencimento || ''}">
+        </div>
+
+        <div class="col-md-4">
+          <label class="form-label">Status</label>
+          <select class="form-control" id="editarReceberStatus">
+            <option value="pendente" ${dados.status === 'pendente' ? 'selected' : ''}>Pendente</option>
+            <option value="recebido" ${dados.status === 'recebido' ? 'selected' : ''}>Recebido</option>
+            <option value="pago" ${dados.status === 'pago' ? 'selected' : ''}>Pago</option>
+            <option value="parcial" ${dados.status === 'parcial' ? 'selected' : ''}>Parcial</option>
+            <option value="vencido" ${dados.status === 'vencido' ? 'selected' : ''}>Vencido</option>
+          </select>
+        </div>
+
+        <div class="col-md-6">
+          <label class="form-label">Cliente</label>
+          <input type="text" class="form-control" id="editarReceberPessoa" value="${escapeHtmlFinanceiroSafe(dados.pessoa_nome || '')}">
+        </div>
+
+        <div class="col-md-6">
+          <label class="form-label">Documento</label>
+          <input type="text" class="form-control" id="editarReceberDocumento" value="${escapeHtmlFinanceiroSafe(dados.documento || '')}">
+        </div>
+
+        <div class="col-md-6">
+          <label class="form-label">Categoria</label>
+          <input type="text" class="form-control" id="editarReceberCategoria" value="${escapeHtmlFinanceiroSafe(dados.categoria || '')}">
+        </div>
+
+        <div class="col-md-6">
+          <label class="form-label">Forma de pagamento</label>
+          <input type="text" class="form-control" id="editarReceberForma" value="${escapeHtmlFinanceiroSafe(dados.forma_pagamento || '')}">
+        </div>
+
+        <div class="col-12">
+          <label class="form-label">Observação</label>
+          <textarea class="form-control" id="editarReceberObservacao" rows="3">${escapeHtmlFinanceiroSafe(dados.observacao || '')}</textarea>
+        </div>
+
+        <div class="col-12 d-flex gap-2 justify-content-end flex-wrap">
+          <button type="button" class="btn btn-secondary" onclick="abrirDetalhesReceber(${id})">Cancelar</button>
+          <button type="submit" class="btn btn-primary">Salvar Alterações</button>
+        </div>
+      </form>
+    `;
+
+    const form = document.getElementById('formEditarReceber');
+    form.addEventListener('submit', async function (event) {
+      event.preventDefault();
+      await salvarEdicaoReceber(id);
+    });
+  } catch (error) {
+    console.error('Erro ao abrir edição do recebimento:', error);
+    body.innerHTML = `<div class="text-danger">Erro ao carregar formulário de edição. ${escapeHtmlFinanceiroSafe(error.message || '')}</div>`;
+  }
+}
+
+async function salvarEdicaoReceber(id) {
+  try {
+    const payload = {
+      descricao: document.getElementById('editarReceberDescricao')?.value?.trim() || '',
+      valor: Number(document.getElementById('editarReceberValor')?.value || 0),
+      data_movimento: document.getElementById('editarReceberData')?.value || '',
+      vencimento: document.getElementById('editarReceberVencimento')?.value || '',
+      status: document.getElementById('editarReceberStatus')?.value || 'pendente',
+      pessoa_nome: document.getElementById('editarReceberPessoa')?.value?.trim() || '',
+      documento: document.getElementById('editarReceberDocumento')?.value?.trim() || '',
+      categoria: document.getElementById('editarReceberCategoria')?.value?.trim() || '',
+      forma_pagamento: document.getElementById('editarReceberForma')?.value?.trim() || '',
+      observacao: document.getElementById('editarReceberObservacao')?.value?.trim() || ''
+    };
+
+    if (!payload.descricao || payload.valor <= 0 || !payload.data_movimento) {
+      alert('Preencha descrição, valor e data do movimento.');
+      return;
+    }
+
+    const response = await fetch(`/api/financeiro/${id}`, {
+      method: 'PUT',
+      headers: {
+        'Content-Type': 'application/json',
+        'Authorization': 'Bearer ' + localStorage.getItem('token')
+      },
+      body: JSON.stringify(payload)
+    });
+
+    const dados = await response.json();
+
+    if (!response.ok || dados.error) {
+      throw new Error(dados.error || 'Erro ao salvar alterações.');
+    }
+
+    alert('Recebimento atualizado com sucesso.');
+
+    const periodo = obterPeriodoFinanceiro();
+    carregarContasReceber(coletarFiltrosReceber(periodo));
+
+    if (typeof carregarDashboardFinanceiro === 'function') {
+      carregarDashboardFinanceiro(periodo);
+    }
+
+    if (typeof carregarHistoricoFinanceiro === 'function') {
+      carregarHistoricoFinanceiro(periodo);
+    }
+
+    abrirDetalhesReceber(id);
+  } catch (error) {
+    console.error('Erro ao salvar edição do recebimento:', error);
+    alert(error.message || 'Erro ao salvar alterações.');
+  }
 }
 
 function renegociarContaReceber(id) {
@@ -829,11 +1010,43 @@ function renegociarContaReceber(id) {
   alert(`Renegociar conta a receber ${id} - Em desenvolvimento`);
 }
 
-function cancelarContaReceber(id) {
-  if (!confirm('Tem certeza que deseja cancelar este recebimento?')) return;
+async function excluirContaReceber(id) {
+  if (!confirm('Tem certeza que deseja excluir este recebimento?')) return;
 
-  // Implementar cancelamento
-  alert(`Cancelar recebimento ${id} - Em desenvolvimento`);
+  try {
+    const response = await fetch(`/api/financeiro/${id}`, {
+      method: 'DELETE',
+      headers: {
+        'Authorization': 'Bearer ' + localStorage.getItem('token')
+      }
+    });
+
+    const dados = await response.json();
+
+    if (!response.ok || dados.error) {
+      throw new Error(dados.error || 'Erro ao excluir recebimento.');
+    }
+
+    alert('Recebimento excluído com sucesso.');
+
+    if (modalDetalhesRecebimento) {
+      modalDetalhesRecebimento.hide();
+    }
+
+    const periodo = obterPeriodoFinanceiro();
+    carregarContasReceber(coletarFiltrosReceber(periodo));
+
+    if (typeof carregarDashboardFinanceiro === 'function') {
+      carregarDashboardFinanceiro(periodo);
+    }
+
+    if (typeof carregarHistoricoFinanceiro === 'function') {
+      carregarHistoricoFinanceiro(periodo);
+    }
+  } catch (error) {
+    console.error('Erro ao excluir recebimento:', error);
+    alert(error.message || 'Erro ao excluir recebimento.');
+  }
 }
 
 function novoRecebimento() {
@@ -856,3 +1069,7 @@ function formatarMoeda(valor) {
     currency: 'BRL'
   }).format(valor);
 }
+
+window.abrirEdicaoReceber = abrirEdicaoReceber;
+window.salvarEdicaoReceber = salvarEdicaoReceber;
+window.excluirContaReceber = excluirContaReceber;
