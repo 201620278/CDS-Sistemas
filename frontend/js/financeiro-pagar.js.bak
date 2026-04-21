@@ -266,7 +266,27 @@ function inicializarModalNovaDespesa() {
     form.dataset.bound = 'true';
   }
 
-// Adicionar toggle para campos de parcelamento
+  // Adicionar toggle para campos de parcelamento
+  const checkboxParcelado = document.getElementById('despesaParcelado');
+  const parcelasGroup = document.getElementById('parcelasGroup');
+  const intervaloGroup = document.getElementById('intervaloGroup');
+
+  if (checkboxParcelado && !checkboxParcelado.dataset.bound) {
+    checkboxParcelado.addEventListener('change', function() {
+      const isChecked = this.checked;
+      if (parcelasGroup) parcelasGroup.style.display = isChecked ? 'block' : 'none';
+      if (intervaloGroup) intervaloGroup.style.display = isChecked ? 'block' : 'none';
+      if (!isChecked) {
+        const parcelasEl = document.getElementById('despesaParcelas');
+        const intervaloEl = document.getElementById('despesaIntervalo');
+        if (parcelasEl) parcelasEl.value = 2;
+        if (intervaloEl) intervaloEl.value = 30;
+      }
+    });
+    checkboxParcelado.dataset.bound = 'true';
+  }
+
+  // Adicionar toggle para campos de parcelamento
   const checkboxParcelado = document.getElementById('despesaParcelado');
   const parcelasGroup = document.getElementById('parcelasGroup');
   const intervaloGroup = document.getElementById('intervaloGroup');
@@ -373,7 +393,7 @@ async function salvarNovaDespesa(event) {
     return;
   }
 
-  try {    const isParcelado = document.getElementById('despesaParcelado')?.checked || false;
+  const isParcelado = document.getElementById('despesaParcelado')?.checked || false;
   const numParcelas = isParcelado ? Number(document.getElementById('despesaParcelas')?.value || 2) : 1;
   const intervaloDias = isParcelado ? Number(document.getElementById('despesaIntervalo')?.value || 30) : 0;
 
@@ -587,7 +607,5 @@ window.novaDespesa = novaDespesa;
 window.abrirDetalhesPagar = abrirDetalhesPagar;
 window.pagarConta = pagarConta;
 window.filtrarPagar = filtrarPagar;
-
-
 
 
