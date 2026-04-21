@@ -352,12 +352,17 @@ router.get('/dashboard', async (req, res) => {
   const resumoSql = `
     SELECT
       COALESCE(SUM(CASE WHEN tipo = 'receita' AND status IN ('recebido','pago') THEN valor END), 0) AS totalRecebido,
-      COALESCE(SUM(CASE WHEN tipo = 'despesa' AND status IN ('pago','recebido') THEN valor END), 0) AS totalPago,
-      COALESCE(SUM(CASE WHEN tipo = 'receita' AND status NOT IN ('recebido','pago') THEN valor END), 0) AS totalReceber,
-      COALESCE(SUM(CASE WHEN tipo = 'despesa' AND status NOT IN ('pago','recebido') THEN valor END), 0) AS totalPagar
+      COALESCE(SUM(CASE WHEN tipo = 'despesa' AND status IN ('pago','recebido') THEN valor END), 0) AS totalPago
     FROM financeiro
     WHERE 1 = 1
     ${periodoFiltro}
+  `;
+
+  const pendentesSql = `
+    SELECT
+      COALESCE(SUM(CASE WHEN tipo = 'receita' AND status NOT IN ('recebido','pago') THEN valor END), 0) AS totalReceber,
+      COALESCE(SUM(CASE WHEN tipo = 'despesa' AND status NOT IN ('pago','recebido') THEN valor END), 0) AS totalPagar
+    FROM financeiro
   `;
 
   const proximosRecebimentosSql = `
@@ -427,6 +432,7 @@ router.get('/dashboard', async (req, res) => {
 
   try {
     const resumo = await dbGetAsync(resumoSql, params);
+    const pendentes = await dbGetAsync(pendentesSql, []);
     const proximosRecebimentos = await dbAllAsync(proximosRecebimentosSql, []);
     const proximosPagamentos = await dbAllAsync(proximosPagamentosSql, []);
     const alertas = await dbAllAsync(alertasSql, []);
@@ -437,8 +443,8 @@ router.get('/dashboard', async (req, res) => {
       resumo: {
         totalRecebido: parseNumber(resumo.totalRecebido),
         totalPago: parseNumber(resumo.totalPago),
-        totalReceber: parseNumber(resumo.totalReceber),
-        totalPagar: parseNumber(resumo.totalPagar)
+        totalReceber: parseNumber(pendentes.totalReceber),
+        totalPagar: parseNumber(pendentes.totalPagar)
       },
       proximos_recebimentos: proximosRecebimentos.map(row => ({
         id: row.id,
@@ -1891,5 +1897,6 @@ router.delete('/:id(\\d+)', (req, res) => {
 });
 
 module.exports = router;
+
 
 
