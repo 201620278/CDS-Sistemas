@@ -1,0 +1,135 @@
+const express = require('express');
+const router = express.Router();
+const db = require('../database');
+const path = require('path');
+const fs = require('fs');
+const multer = require('multer');
+const { getFiscalConfig, setConfiguracao } = require('../services/fiscal/configService');
+const { carregarCertificadoPfx } = require('../services/fiscal/certificateService');
+const { emitirPorVendaId } = require('../services/fiscal/emissor');
+
+const pastaCertificados = path.resolve(__dirname, '../certificados');
+
+if (!fs.existsSync(pastaCertificados)) {
+  fs.mkdirSync(pastaCertificados, { recursive: true });
+}
+
+const storage = multer.diskStorage({
+  destination: (req, file, cb) => {
+    cb(null, pastaCertificados);
+  },
+  filename: (req, file, cb) => {
+    cb(null, 'certificado.pfx');
+  }
+});
+
+const upload = multer({
+  storage,
+  fileFilter: (req, file, cb) => {
+    const ext = path.extname(file.originalname).toLowerCase();
+
+    if (ext !== '.pfx') {
+      return cb(new Error('Envie apenas arquivo .pfx'));
+    }
+
+    cb(null, true);
+  }
+});
+
+router.post('/certificado/upload', upload.single('certificado'), async (req, res) => {
+  try {
+    if (!req.file) {
+      return res.status(400).json({ error: 'Nenhum certificado enviado.' });
+    }
+
+    const caminhoCompleto = path.resolve(pastaCertificados, 'certificado.pfx');
+
+    await setConfiguracao(
+      'fiscal_certificado_path',
+      caminhoCompleto,
+      'string',
+      'Caminho interno do certificado A1'
+    );
+
+    res.json({
+      success: true,
+      message: 'Certificado enviado com sucesso.',
+      path: caminhoCompleto
+    });
+  } catch (error) {
+    res.status(500).json({ error: error.message });
+  }
+});
+
+router.get('/config', async (req, res) => {
+  try {
+    const config = await getFiscalConfig();
+    res.json(config);
+  } catch (error) {
+    res.status(500).json({ error: error.message });
+  }
+});
+
+router.put('/config', async (req, res) => {
+  try {
+    const payload = req.body || {};
+    const entries = Object.entries(payload);
+    for (const [chave, valor] of entries) {
+      await setConfiguracao(chave, String(valor ?? ''), 'string', `Configuração fiscal: ${chave}`);
+    }
+    res.json({ message: 'Configurações fiscais atualizadas com sucesso.' });
+  } catch (error) {
+    res.status(500).json({ error: error.message });
+  }
+});
+
+router.post('/config/certificado/testar', async (req, res) => {
+  try {
+    const { certificadoPath, senha } = req.body;
+    const certificado = carregarCertificadoPfx(certificadoPath, senha);
+    res.json({
+      success: true,
+      certBase64Length: certificado.certBase64.length
+    });
+  } catch (error) {
+    res.status(400).json({ error: error.message });
+  }
+});
+
+router.post('/emitir/venda/:vendaId', async (req, res) => {
+  try {
+    const vendaId = Number(req.params.vendaId);
+    const resultado = await emitirPorVendaId(vendaId);
+    res.json(resultado);
+  } catch (error) {
+    console.error('Erro ao emitir NFC-e:', error);
+    res.status(500).json({ error: error.message });
+  }
+});
+
+router.get('/notas', (req, res) => {
+  db.all(`
+    SELECT n.*, v.codigo as venda_codigo, v.total as venda_total
+    FROM nfce_notas n
+    LEFT JOIN vendas v ON v.id = n.venda_id
+    ORDER BY n.id DESC
+  `, [], (err, rows) => {
+    if (err) return res.status(500).json({ error: err.message });
+    res.json(rows || []);
+  });
+});
+
+router.get('/notas/:id', (req, res) => {
+  db.get(`
+    SELECT n.*, v.codigo as venda_codigo, v.total as venda_total
+    FROM nfce_notas n
+    LEFT JOIN vendas v ON v.id = n.venda_id
+    WHERE n.id = ?
+  `, [req.params.id], (err, row) => {
+    if (err) return res.status(500).json({ error: err.message });
+    if (!row) return res.status(404).json({ error: 'NFC-e não encontrada.' });
+    res.json(row);
+  });
+});
+
+module.exports = router;

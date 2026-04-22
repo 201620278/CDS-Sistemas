@@ -1,0 +1,542 @@
+function isAdminUser() {
+    try {
+        const u = JSON.parse(localStorage.getItem('user') || '{}');
+        return u.role === 'admin';
+    } catch (e) {
+        return false;
+    }
+}
+
+// Load configuracoes page
+function loadConfiguracoes() {
+    $.ajax({
+        url: `${API_URL}/configuracoes`,
+        method: 'GET',
+        success: function(configuracoes) {
+            if (isAdminUser()) {
+                $.ajax({
+                    url: `${API_URL}/auth/usuarios`,
+                    method: 'GET',
+                    success: function(usuarios) {
+                        renderConfiguracoes(configuracoes, usuarios);
+                    },
+                    error: function() {
+                        renderConfiguracoes(configuracoes, null);
+                    }
+                });
+            } else {
+                renderConfiguracoes(configuracoes, null);
+            }
+        },
+        error: function() {
+            $('#page-content').html('<div class="alert alert-danger">Erro ao carregar configurações!</div>');
+        }
+    });
+}
+
+// Render configuracoes
+function renderConfiguracoes(configuracoes, usuarios) {
+    let currentUsername = '';
+    try {
+        currentUsername = JSON.parse(localStorage.getItem('user') || '{}').username || '';
+    } catch (e) {}
+
+    const fiscalConfigKeys = new Set([
+        'nome_empresa',
+        'cnpj',
+        'fiscal_ambiente',
+        'fiscal_uf_sigla',
+        'fiscal_uf',
+        'fiscal_codigo_uf',
+        'fiscal_serie',
+        'fiscal_numero_atual',
+        'fiscal_regime_tributario',
+        'fiscal_ie',
+        'fiscal_im',
+        'fiscal_cnae',
+        'fiscal_certificado_path',
+        'fiscal_certificado_senha',
+        'fiscal_id_csc',
+        'fiscal_token_csc',
+        'fiscal_ws_autorizacao_homologacao',
+        'fiscal_ws_retorno_homologacao',
+        'fiscal_ws_status_homologacao',
+        'fiscal_csc_qrcode_url_homologacao',
+        'fiscal_consulta_chave_url_homologacao',
+        'fiscal_tp_imp',
+        'fiscal_municipio_codigo',
+        'fiscal_municipio_nome',
+        'fiscal_emitente_cep',
+        'fiscal_emitente_logradouro',
+        'fiscal_emitente_numero',
+        'fiscal_emitente_bairro'
+    ]);
+
+    const backupConfigKeys = new Set([
+        'backup_google_enabled',
+        'backup_google_frequency',
+        'backup_google_client_id',
+        'backup_google_client_secret',
+        'backup_google_redirect_uris',
+        'backup_google_refresh_token'
+    ]);
+
+    configuracoes = configuracoes.filter(config => !fiscalConfigKeys.has(config.chave) && !backupConfigKeys.has(config.chave) && config.chave !== 'endereco');
+
+    const ordemCamposEmpresa = [
+        'nome_empresa',
+        'nome_fantasia',
+        'razao_social',
+        'cnpj',
+        'ie',
+        'im',
+        'telefone',
+        'whatsapp',
+        'email',
+        'cep',
+        'logradouro',
+        'numero',
+        'complemento',
+        'bairro',
+        'cidade',
+        'uf'
+    ];
+
+    configuracoes.sort((a, b) => {
+        const ia = ordemCamposEmpresa.indexOf(a.chave);
+        const ib = ordemCamposEmpresa.indexOf(b.chave);
+
+        if (ia === -1 && ib === -1) return 0;
+        if (ia === -1) return 1;
+        if (ib === -1) return -1;
+        return ia - ib;
+    });
+
+    const blocoUsuarios = usuarios && isAdminUser() ? `
+        <div class="card mt-3">
+            <div class="card-header">
+                <i class="fas fa-user-shield"></i> Usuários do sistema
+            </div>
+            <div class="card-body">
+                <p class="text-muted small">Apenas o administrador pode cadastrar ou remover usuários. O operador acessa o mesmo sistema, sem esta seção.</p>
+                <div class="table-responsive mb-3">
+                    <table class="table table-sm table-striped">
+                        <thead>
+                            <tr>
+                                <th>Usuário</th>
+                                <th>Perfil</th>
+                                <th>Cadastro</th>
+                                <th></th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            ${usuarios.map(u => `
+                                <tr>
+                                    <td>${escapeHtml(u.username)}</td>
+                                    <td><span class="badge bg-${u.role === 'admin' ? 'danger' : 'secondary'}">${u.role === 'admin' ? 'Administrador' : 'Operador'}</span></td>
+                                    <td>${u.created_at ? formatDateTime(u.created_at) : '-'}</td>
+                                    <td>
+                                        ${u.username !== JSON.parse(localStorage.getItem('user') || '{}').username ? `
+                                            <button type="button" class="btn btn-sm btn-outline-danger" onclick="excluirUsuarioSistema(${u.id}, '${escapeHtml(u.username).replace(/'/g, "\\'")}')">
+                                                <i class="fas fa-trash"></i>
+                                            </button>
+                                        ` : '<span class="text-muted small">você</span>'}
+                                    </td>
+                                </tr>
+                            `).join('')}
+                        </tbody>
+                    </table>
+                </div>
+                <button type="button" class="btn btn-primary btn-sm" onclick="showModalNovoUsuario()">
+                    <i class="fas fa-user-plus"></i> Novo usuário
+                </button>
+            </div>
+        </div>
+    ` : '';
+
+    const html = `
+        <div class="card">
+            <div class="card-header">
+                <i class="fas fa-cog"></i> Configurações do Sistema
+            </div>
+            <div class="card-body">
+                <form id="configForm">
+                    <div class="row">
+                        ${configuracoes.map(config => `
+                            <div class="col-md-6 mb-3">
+                                <label for="${config.chave}" class="form-label fw-bold">
+                                    ${config.descricao || config.chave}
+                                </label>
+                                ${renderConfigField(config)}
+                            </div>
+                        `).join('')}
+                    </div>
+
+                    <button type="button" class="btn btn-primary" onclick="saveConfiguracoes()">
+                        <i class="fas fa-save"></i> Salvar Configurações
+                    </button>
+                </form>
+            </div>
+        </div>
+
+        <div class="card mt-3">
+            <div class="card-header">
+                <i class="fas fa-database"></i> Backup e Manutenção
+            </div>
+            <div class="card-body">
+                <button class="btn btn-info" onclick="fazerBackup()">
+                    <i class="fas fa-download"></i> Fazer Backup
+                </button>
+                <button class="btn btn-secondary ms-2" onclick="showBackupConfigModal()">
+                    <i class="fas fa-cloud-upload-alt"></i> Configurar Backup Google Drive
+                </button>
+                <button class="btn btn-warning ms-2" onclick="limparCache()">
+                    <i class="fas fa-trash"></i> Limpar Cache
+                </button>
+                <button class="btn btn-outline-primary ms-2" onclick="backupManual()">
+                    <i class="fas fa-play"></i> Backup Manual Agora
+                </button>
+            </div>
+        </div>
+        
+        <div class="card mt-3">
+            <div class="card-header">
+                <i class="fas fa-info-circle"></i> Informações do Sistema
+            </div>
+            <div class="card-body">
+                <p><strong>Versão:</strong> 1.0.0</p>
+                <p><strong>Data de Instalação:</strong> ${new Date().toLocaleDateString()}</p>
+                <p><strong>Desenvolvido por:</strong> Cicero Diego</p>
+            </div>
+        </div>
+        ${blocoUsuarios}
+    `;
+    
+    $('#page-content').html(html);
+}
+
+function escapeHtml(s) {
+    if (!s) return '';
+    const div = document.createElement('div');
+    div.textContent = s;
+    return div.innerHTML;
+}
+
+function showModalNovoUsuario() {
+    const modalHtml = `
+        <div class="modal fade" id="novoUsuarioModal" tabindex="-1">
+            <div class="modal-dialog">
+                <div class="modal-content">
+                    <div class="modal-header">
+                        <h5 class="modal-title">Novo usuário</h5>
+                        <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+                    </div>
+                    <div class="modal-body">
+                        <div class="mb-3">
+                            <label class="form-label">Nome de usuário</label>
+                            <input type="text" class="form-control" id="novo_usuario_login" autocomplete="off">
+                        </div>
+                        <div class="mb-3">
+                            <label class="form-label">Senha (mín. 4 caracteres)</label>
+                            <input type="password" class="form-control" id="novo_usuario_senha" autocomplete="new-password">
+                        </div>
+                        <div class="mb-3">
+                            <label class="form-label">Perfil</label>
+                            <select class="form-control" id="novo_usuario_role">
+                                <option value="operador">Operador</option>
+                                <option value="admin">Administrador</option>
+                            </select>
+                        </div>
+                        <div id="novo-usuario-erro" class="alert alert-danger py-2 d-none"></div>
+                    </div>
+                    <div class="modal-footer">
+                        <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancelar</button>
+                        <button type="button" class="btn btn-primary" onclick="salvarNovoUsuario()">Cadastrar</button>
+                    </div>
+                </div>
+            </div>
+        </div>
+    `;
+    $('#modal-container').html(modalHtml);
+    $('#novoUsuarioModal').modal('show');
+}
+
+function salvarNovoUsuario() {
+    const username = $('#novo_usuario_login').val().trim();
+    const password = $('#novo_usuario_senha').val();
+    const role = $('#novo_usuario_role').val();
+    const $err = $('#novo-usuario-erro');
+    $err.addClass('d-none').text('');
+
+    if (!username || !password) {
+        $err.removeClass('d-none').text('Preencha usuário e senha.');
+        return;
+    }
+
+    $.ajax({
+        url: `${API_URL}/auth/usuarios`,
+        method: 'POST',
+        contentType: 'application/json',
+        data: JSON.stringify({ username, password, role }),
+        success: function() {
+            $('#novoUsuarioModal').modal('hide');
+            showNotification('Usuário cadastrado com sucesso!');
+            loadConfiguracoes();
+        },
+        error: function(xhr) {
+            $err.removeClass('d-none').text(xhr.responseJSON && xhr.responseJSON.error ? xhr.responseJSON.error : 'Erro ao cadastrar.');
+        }
+    });
+}
+
+function excluirUsuarioSistema(id) {
+    if (!confirm('Remover este usuário? Esta ação não pode ser desfeita.')) return;
+    $.ajax({
+        url: `${API_URL}/auth/usuarios/${id}`,
+        method: 'DELETE',
+        success: function() {
+            showNotification('Usuário removido.');
+            loadConfiguracoes();
+        },
+        error: function(xhr) {
+            showNotification(xhr.responseJSON && xhr.responseJSON.error ? xhr.responseJSON.error : 'Erro ao remover.', 'danger');
+        }
+    });
+}
+
+// Render config field based on type
+function renderConfigField(config) {
+    const value = config.valor || '';
+
+    if (config.chave === 'logo') {
+        const previewUrl = value && value.startsWith('/')
+            ? `${API_URL.replace('/api', '')}${value}`
+            : value;
+
+        const previewImg = previewUrl
+            ? `<img src="${escapeHtml(previewUrl)}" alt="Logo atual" style="max-height: 100px;" />`
+            : '';
+
+        return `
+            <div>
+                <input type="file" class="form-control" id="logoUpload" accept="image/*">
+                <input type="hidden" id="logo_path" value="${escapeHtml(value)}">
+                <div id="logoPreview" class="mt-2">
+                    ${previewImg}
+                </div>
+            </div>
+        `;
+    }
+
+    if (config.chave === 'cep') {
+        return `<input type="text" class="form-control" id="${config.chave}" value="${value}" onblur="buscarCep(this.value)" oninput="formatCep(this)">`;
+    }
+
+    if (config.chave === 'telefone' || config.chave === 'whatsapp') {
+        return `<input type="text" class="form-control" id="${config.chave}" value="${value}" oninput="formatPhone(this)">`;
+    }
+
+    switch(config.tipo) {
+        case 'boolean':
+            return `
+                <select class="form-control" id="${config.chave}">
+                    <option value="true" ${value === 'true' ? 'selected' : ''}>Sim</option>
+                    <option value="false" ${value === 'false' ? 'selected' : ''}>Não</option>
+                </select>
+            `;
+        case 'text':
+            return `<textarea class="form-control" id="${config.chave}" rows="3">${value}</textarea>`;
+        default:
+            return `<input type="text" class="form-control" id="${config.chave}" value="${value}">`;
+    }
+}
+
+async function uploadLogoFile() {
+    const logoInput = document.getElementById('logoUpload');
+    if (!logoInput || !logoInput.files || logoInput.files.length === 0) {
+        return null;
+    }
+
+    const formData = new FormData();
+    formData.append('logo', logoInput.files[0]);
+
+    const resp = await fetch(`${API_URL}/configuracoes/upload-logo`, {
+        method: 'POST',
+        headers: {
+            'Authorization': `Bearer ${localStorage.getItem('token')}`
+        },
+        body: formData
+    });
+
+    if (!resp.ok) {
+        const errorData = await resp.json().catch(() => null);
+        throw new Error(errorData?.error || 'Erro ao enviar a logo.');
+    }
+
+    const data = await resp.json();
+    if (data.path) {
+        $('#logo_path').val(data.path);
+        $('#logoPreview').html(`<img src="${escapeHtml(data.path)}" alt="Logo atual" style="max-height: 100px;" />`);
+        // Recarrega a logo na sidebar imediatamente
+        setTimeout(() => {
+            if (typeof carregarLogoSidebar === 'function') {
+                carregarLogoSidebar();
+            }
+        }, 200);
+    }
+
+    return data.path;
+}
+
+// Save configuracoes
+async function saveConfiguracoes() {
+    try {
+        await uploadLogoFile();
+    } catch (error) {
+        showNotification(error.message || 'Erro ao enviar a logo.', 'danger');
+        return;
+    }
+
+    const configs = [];
+    
+    $('#configForm .form-control').each(function() {
+        const chave = $(this).attr('id');
+        const valor = $(this).val();
+        if (!chave || chave === 'logoUpload') return;
+        if (chave === 'logo_path') {
+            configs.push({
+                chave: 'logo',
+                valor: valor
+            });
+            return;
+        }
+
+        configs.push({
+            chave: chave,
+            valor: valor
+        });
+    });
+    
+    let promises = [];
+    
+    configs.forEach(config => {
+        const promise = $.ajax({
+            url: `${API_URL}/configuracoes/${config.chave}`,
+            method: 'PUT',
+            contentType: 'application/json',
+            data: JSON.stringify({ valor: config.valor })
+        });
+        promises.push(promise);
+    });
+    
+    Promise.all(promises)
+        .then(() => {
+            showNotification('Configurações salvas com sucesso!');
+            // Recarrega a logo na sidebar
+            if (typeof carregarLogoSidebar === 'function') {
+                carregarLogoSidebar();
+            }
+            loadConfiguracoes();
+        })
+        .catch(() => {
+            showNotification('Erro ao salvar configurações!', 'danger');
+        });
+}
+
+// Fazer backup
+function fazerBackup() {
+    const data = {
+        produtos: null,
+        clientes: null,
+        vendas: null,
+        compras: null,
+        financeiro: null
+    };
+    
+    // Fetch all data
+    const promises = [
+        $.ajax({ url: `${API_URL}/produtos`, method: 'GET' }),
+        $.ajax({ url: `${API_URL}/clientes`, method: 'GET' }),
+        $.ajax({ url: `${API_URL}/vendas`, method: 'GET' }),
+        $.ajax({ url: `${API_URL}/compras`, method: 'GET' }),
+        $.ajax({ url: `${API_URL}/financeiro`, method: 'GET' })
+    ];
+    
+    Promise.all(promises)
+        .then(([produtos, clientes, vendas, compras, financeiro]) => {
+            const backup = {
+                data: new Date().toISOString(),
+                produtos: produtos,
+                clientes: clientes,
+                vendas: vendas,
+                compras: compras,
+                financeiro: financeiro
+            };
+            
+            const backupStr = JSON.stringify(backup, null, 2);
+            const blob = new Blob([backupStr], { type: 'application/json' });
+            const url = URL.createObjectURL(blob);
+            const a = document.createElement('a');
+            a.href = url;
+            a.download = `backup_${new Date().toISOString().split('T')[0]}.json`;
+            a.click();
+            URL.revokeObjectURL(url);
+            
+            showNotification('Backup gerado com sucesso!');
+        })
+        .catch(() => {
+            showNotification('Erro ao gerar backup!', 'danger');
+        });
+}
+
+// Buscar CEP
+function buscarCep(cep) {
+    if (!cep || cep.length < 8) return;
+
+    // Remover caracteres não numéricos
+    cep = cep.replace(/\D/g, '');
+
+    if (cep.length !== 8) return;
+
+    // Mostrar loading
+    showNotification('Buscando endereço...', 'info');
+
+    fetch(`https://viacep.com.br/ws/${cep}/json/`)
+        .then(response => response.json())
+        .then(data => {
+            if (data.erro) {
+                showNotification('CEP não encontrado.', 'warning');
+                return;
+            }
+
+            // Preencher os campos
+            $('#logradouro').val(data.logradouro || '');
+            $('#bairro').val(data.bairro || '');
+            $('#cidade').val(data.localidade || '');
+            $('#uf').val(data.uf || '');
+
+            showNotification('Endereço preenchido automaticamente.');
+        })
+        .catch(error => {
+            console.error('Erro ao buscar CEP:', error);
+            showNotification('Erro ao buscar CEP. Tente novamente.', 'danger');
+        });
+}
+
+// Formatar telefone
+function formatPhone(input) {
+    let value = input.value.replace(/\D/g, '');
+    if (value.length <= 11) {
+        value = value.replace(/(\d{2})(\d{1})(\d{4})(\d{4})/, '($1)$2.$3-$4');
+        input.value = value;
+    }
+}
+
+// Formatar CEP
+function formatCep(input) {
+    let value = input.value.replace(/\D/g, '');
+    if (value.length <= 8) {
+        value = value.replace(/(\d{5})(\d{3})/, '$1-$2');
+        input.value = value;
+    }
+}
