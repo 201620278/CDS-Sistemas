@@ -5,7 +5,7 @@ const http = require('http');
 
 let mainWindow;
 let backendProcess;
-const PORT = 3000;
+const PORT = 3030;
 
 function getBackendEntry() {
   if (app.isPackaged) {
