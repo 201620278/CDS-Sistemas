@@ -15,12 +15,18 @@ pnpm-debug.log*
 !.env.example
 
 # Banco local / dados temporarios
+dados/
 *.db
 *.sqlite
 *.sqlite3
 *.db-shm
 *.db-wal
 *.db-journal
+
+# Arquivos sensíveis e certificados
+certificado_teste.pfx
+backend/storage/certificados/
+backend/storage/temp-certificados/
 
 # XML e arquivos de debug fiscal
 backend/storage/xml/

@@ -5,8 +5,8 @@
   "author": "CDS Sistemas",
   "main": "electron.js",
   "scripts": {
-    "start": "node backend/server.js",
-    "electron": ".\\node_modules\\electron\\dist\\electron.exe .\\electron.js",
+    "start": ".\\node_modules\\electron\\dist\\electron.exe .\\electron.js",
+    "server": "node backend/server.js",
     "dist": "electron-builder --win nsis"
   },
   "dependencies": {
@@ -36,7 +36,7 @@
   },
   "build": {
     "appId": "com.cd.sistemas",
-    "productName": "CDS Sistemas",
+    "productName": "Esquinão da Economia",
     "directories": {
       "output": "dist-ia32"
     },
@@ -67,8 +67,8 @@
       "allowToChangeInstallationDirectory": true,
       "createDesktopShortcut": true,
       "createStartMenuShortcut": true,
-      "shortcutName": "CDS Sistemas",
-      "artifactName": "CDS-Sistemas-Setup-${version}-ia32.exe"
+      "shortcutName": "Esquinão da Economia",
+      "artifactName": "Esquinão-da-Economia-Setup-${version}-ia32.exe"
     }
   }
 }

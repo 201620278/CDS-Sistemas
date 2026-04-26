@@ -9,7 +9,7 @@ const bodyParser = require('body-parser');
 const jwt = require('jsonwebtoken');
 
 const app = express();
-const PORT = process.env.PORT || 3000;
+const PORT = process.env.PORT || 3001;
 
 // Chave secreta (deve ser a mesma do auth.js)
 const JWT_SECRET = 'mercantil_do_nando_secret_key_2024';
@@ -18,6 +18,11 @@ const JWT_SECRET = 'mercantil_do_nando_secret_key_2024';
 app.use(cors());
 app.use(bodyParser.json());
 app.use(bodyParser.urlencoded({ extended: true }));
+
+app.get('/ping', (req, res) => {
+    res.json({ ok: true });
+});
+
 app.use(express.static(path.join(__dirname, '../frontend')));
 app.use('/storage', express.static(path.join(__dirname, '../storage')));
 
@@ -121,3 +126,5 @@ server.on('error', (err) => {
     console.error('Erro ao iniciar o servidor:', err);
     process.exit(1);
 });
+
+module.exports = server;

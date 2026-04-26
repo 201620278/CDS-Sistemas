@@ -1,9 +1,11 @@
-(function ensureApiUrl() {
-  if (typeof API_URL === 'undefined') {
-    window.API_URL = 'http://localhost:3000/api';
-    // Também define como const local para uso neste arquivo
-    const API_URL = window.API_URL;
+const API_URL = (() => {
+  if (typeof window.API_URL === 'string' && window.API_URL.trim() !== '') {
+    return window.API_URL;
   }
+
+  const resolved = `${window.location.origin}/api`;
+  window.API_URL = resolved;
+  return resolved;
 })();
 
 (function redirectIfLoggedIn() {

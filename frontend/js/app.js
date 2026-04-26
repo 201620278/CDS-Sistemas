@@ -1,5 +1,12 @@
-// API base URL
-const API_URL = 'http://localhost:3000/api';
+// API base URL (usa a mesma origem da aplicação para evitar conflito de porta)
+const API_URL = (() => {
+    if (typeof window.API_URL === 'string' && window.API_URL.trim() !== '') {
+        return window.API_URL;
+    }
+    const resolved = `${window.location.origin}/api`;
+    window.API_URL = resolved;
+    return resolved;
+})();
 
 let currentPage = 'pdv';
 let chart = null;
