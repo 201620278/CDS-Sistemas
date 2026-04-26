@@ -197,6 +197,7 @@ function createWindow(serverPort) {
       return carregarJanelaComRobustez(mainWindow, `${baseUrl}/login`);
     })
     .then(() => {
+      mainWindow.maximize();
       mainWindow.show();
     })
     .catch((error) => {

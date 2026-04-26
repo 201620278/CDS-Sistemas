@@ -839,11 +839,41 @@ function inicializarCalculoPreco(produto, isEdit) {
         }
     }
 
-    $('#preco_compra').off('input').on('input', atualizarPrecoVenda);
+    function atualizarLucroPercentual() {
+        const precoCompra = parseFloat($('#preco_compra').val()) || 0;
+        const precoVenda = parseFloat($('#preco_venda').val());
+
+        if (!isNaN(precoVenda) && precoVenda > 0) {
+            const margem = (1 - (precoCompra / precoVenda)) * 100;
+            if (isFinite(margem)) {
+                $('#lucro_percentual').val(margem.toFixed(2));
+            }
+        }
+    }
+
+    $('#preco_compra').off('input').on('input', function () {
+        const lucroDigitado = parseFloat($('#lucro_percentual').val());
+
+        if (!isNaN(lucroDigitado)) {
+            atualizarPrecoVenda();
+            return;
+        }
+
+        atualizarLucroPercentual();
+    });
+
     $('#lucro_percentual').off('input').on('input', atualizarPrecoVenda);
+    $('#preco_venda').off('input').on('input', atualizarLucroPercentual);
 
     if (isEdit && produto) {
-        setTimeout(atualizarPrecoVenda, 100);
+        setTimeout(() => {
+            const lucroDigitado = parseFloat($('#lucro_percentual').val());
+            if (!isNaN(lucroDigitado)) {
+                atualizarPrecoVenda();
+            } else {
+                atualizarLucroPercentual();
+            }
+        }, 100);
     }
 }
 
