@@ -6,7 +6,21 @@ const router = express.Router();
 const db = require('../database');
 const backup = require('../backup');
 
-const logoStoragePath = path.join(__dirname, '../../storage/logos');
+function getWritableStoragePath() {
+  if (process.platform === 'win32') {
+    return path.join(
+      process.env.PROGRAMDATA || 'C:\\ProgramData',
+      'CDS Sistemas',
+      'Esquinao da Economia'
+    );
+  }
+
+  return path.join(process.cwd(), 'dados-app');
+}
+
+const appDataPath = getWritableStoragePath();
+const logoStoragePath = path.join(appDataPath, 'storage', 'logos');
+
 fs.mkdirSync(logoStoragePath, { recursive: true });
 
 const logoUpload = multer({

@@ -38,25 +38,28 @@
     "appId": "com.cd.sistemas",
     "productName": "Esquinão da Economia",
     "directories": {
-      "output": "dist-ia32"
+      "output": "dist"
     },
-    "asar": false,
+    "asar": true,
+    "asarUnpack": [
+      "node_modules/sqlite3/**/*",
+      "node_modules/escpos/**/*",
+      "node_modules/escpos-usb/**/*"
+    ],
     "files": [
       "backend/**/*",
       "frontend/**/*",
-      "storage/**/*",
       "electron.js",
       "preload.js",
       "package.json",
-      "assets/**/*",
-      "node_modules/**/*"
+      "assets/**/*"
     ],
     "win": {
       "target": [
         {
           "target": "nsis",
           "arch": [
-            "ia32"
+            "x64"
           ]
         }
       ],
@@ -68,7 +71,7 @@
       "createDesktopShortcut": true,
       "createStartMenuShortcut": true,
       "shortcutName": "Esquinão da Economia",
-      "artifactName": "Esquinão-da-Economia-Setup-${version}-ia32.exe"
+      "artifactName": "Esquinão-da-Economia-Setup-${version}-x64.exe"
     }
   }
 }

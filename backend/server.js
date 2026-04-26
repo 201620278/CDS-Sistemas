@@ -24,7 +24,23 @@ app.get('/ping', (req, res) => {
 });
 
 app.use(express.static(path.join(__dirname, '../frontend')));
-app.use('/storage', express.static(path.join(__dirname, '../storage')));
+function getWritableStoragePath() {
+    if (process.platform === 'win32') {
+      return path.join(
+        process.env.PROGRAMDATA || 'C:\\ProgramData',
+        'CDS Sistemas',
+        'Esquinao da Economia'
+      );
+    }
+  
+    return path.join(process.cwd(), 'dados-app');
+  }
+  
+  // primeiro tenta no local correto (produção)
+  app.use('/storage', express.static(path.join(getWritableStoragePath(), 'storage')));
+  
+  // fallback (para desenvolvimento)
+  app.use('/storage', express.static(path.join(__dirname, '../storage')));
 
 // Função para verificar token
 function verificarToken(req, res, next) {
