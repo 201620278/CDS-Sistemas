@@ -726,9 +726,8 @@ function abrirModalDecisaoFiscal(skipPagamento = false) {
                         <div class="d-grid gap-2">
                             <button
                                 type="button"
-                                class="btn btn-secondary btn-fiscal-bloqueado"
-                                onclick="mostrarFiscalEmDesenvolvimento()"
-                                title="Módulo fiscal em desenvolvimento"
+                                class="btn btn-warning"
+                                onclick="finalizarComFiscal()"
                             >
                                 Sim, emitir NFC-e
                             </button>
@@ -769,6 +768,17 @@ function finalizarSemFiscal() {
     }
 
     executarFinalizacaoVenda();
+}
+
+function finalizarComFiscal() {
+    const modalEl = document.getElementById('decisaoFiscalModal');
+    const instancia = bootstrap.Modal.getInstance(modalEl);
+
+    if (instancia) {
+        instancia.hide();
+    }
+
+    executarFinalizacaoVenda(true);
 }
 
 function mostrarModalAvisoDebitoCliente(aviso, totalEmAberto, parcelasVencidas, onConfirm) {
@@ -813,7 +823,7 @@ function mostrarModalAvisoDebitoCliente(aviso, totalEmAberto, parcelasVencidas, 
     });
 }
 
-function executarFinalizacaoVenda() {
+function executarFinalizacaoVenda(emitirFiscal = false) {
     if (vendaEmProcessamento) {
         showNotification('A venda já está sendo processada.', 'warning');
         return;
@@ -852,7 +862,7 @@ function executarFinalizacaoVenda() {
         forma_pagamento: formaPagamento,
         desconto,
         total,
-        emitir_fiscal: false,
+        emitir_fiscal: !!emitirFiscal,
         itens: carrinho.map(item => ({
             produto_id: Number(item.id),
             quantidade: Number(item.quantidade),

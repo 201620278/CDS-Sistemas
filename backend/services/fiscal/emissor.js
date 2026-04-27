@@ -25,6 +25,39 @@ function salvarDebug(nome, conteudo) {
   fs.writeFileSync(path.join(pasta, nome), String(conteudo ?? ''), 'utf8');
 }
 
+function extrairTag(xml, tag, bloco = null) {
+  const origem = bloco || xml;
+  if (!origem) return null;
+
+  const regex = new RegExp(`<(?:\\w+:)?${tag}\\b[^>]*>([\\s\\S]*?)<\\/(?:\\w+:)?${tag}>`, 'i');
+  const match = origem.match(regex);
+  return match ? String(match[1]).trim() : null;
+}
+
+function extrairBloco(xml, tag) {
+  if (!xml) return null;
+
+  const regex = new RegExp(`<(?:\\w+:)?${tag}\\b[^>]*>[\\s\\S]*?<\\/(?:\\w+:)?${tag}>`, 'i');
+  const match = xml.match(regex);
+  return match ? match[0] : null;
+}
+
+function parseRetornoSefaz(rawXml) {
+  const raw = String(rawXml || '');
+  const retEnviNFe = extrairBloco(raw, 'retEnviNFe');
+  const protNFe = extrairBloco(raw, 'protNFe');
+  const infProt = extrairBloco(protNFe, 'infProt');
+
+  return {
+    retEnviNFe,
+    protNFe,
+    infProt,
+    cStat: extrairTag(raw, 'cStat', infProt) || extrairTag(raw, 'cStat', retEnviNFe),
+    xMotivo: extrairTag(raw, 'xMotivo', infProt) || extrairTag(raw, 'xMotivo', retEnviNFe),
+    nProt: extrairTag(raw, 'nProt', infProt) || extrairTag(raw, 'nProt', protNFe)
+  };
+}
+
 function carregarVenda(vendaId) {
   return new Promise((resolve, reject) => {
     db.get(`
@@ -215,7 +248,7 @@ async function emitirPorVendaId(vendaId) {
 
     const infNFeSupl = montarInfNFeSupl({
       qrCodeUrl,
-      urlChave: config.urls.consultaQr
+      urlChave: config.urls.consultaChave || config.urls.consultaQr
     });
 
     xmlAssinadoFinal = anexarInfNFeSupl(assinatura.xmlAssinado, infNFeSupl);
@@ -283,14 +316,16 @@ async function emitirPorVendaId(vendaId) {
 
     const raw = String(soapResponse.raw || soapResponse.message || '');
 
-    if (raw.includes('<cStat>100</cStat>')) {
-      status = 'autorizada';
+    const retornoSefaz = parseRetornoSefaz(raw);
+    soapResponse.retornoSefaz = retornoSefaz;
 
-      const protMatch = raw.match(/<nProt>(.*?)<\/nProt>/);
-      if (protMatch) {
-        soapResponse.protocolo = protMatch[1];
-      }
-    } else if (raw.includes('<cStat>') || /rejeic/i.test(raw)) {
+    if (retornoSefaz.nProt) {
+      soapResponse.protocolo = retornoSefaz.nProt;
+    }
+
+    if (retornoSefaz.cStat === '100') {
+      status = 'autorizada';
+    } else if (retornoSefaz.cStat || /rejeic/i.test(raw)) {
       status = 'rejeitada';
     } else {
       status = soapResponse.status || 'pendente';
