@@ -12,18 +12,14 @@ function obterPortaServidor() {
 }
 
 function garantirDiretorioBanco() {
-  if (!process.env.DB_DIR || process.env.DB_DIR.trim() === '') {
-    const dbDir = app.isPackaged
-      ? path.join(app.getPath('userData'), 'dados')
-      : path.join(__dirname, 'dados');
+  const dbDir = 'C:\\projetos\\MercantilFiscal\\dados';
 
-    if (!fs.existsSync(dbDir)) {
-      fs.mkdirSync(dbDir, { recursive: true });
-    }
-
-    process.env.DB_DIR = dbDir;
-    console.log('DB_DIR definido para:', process.env.DB_DIR);
+  if (!fs.existsSync(dbDir)) {
+    fs.mkdirSync(dbDir, { recursive: true });
   }
+
+  process.env.DB_DIR = dbDir;
+  console.log('DB_DIR definido para:', process.env.DB_DIR);
 }
 
 function esperarServidor(url, timeout = 15000) {
