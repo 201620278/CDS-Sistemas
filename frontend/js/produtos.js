@@ -456,7 +456,7 @@ function showProdutoModal(produto = null) {
     $('#produtoModal').remove();
     $('#viewProdutoModal').remove();
     const modalHtml = `
-        <div class="modal fade" id="produtoModal" tabindex="-1" aria-hidden="true">
+        <div class="modal fade" id="produtoModal" tabindex="-1">
             <div class="modal-dialog modal-lg modal-dialog-scrollable">
                 <div class="modal-content">
                     <div class="modal-header d-flex align-items-center justify-content-between">
@@ -520,8 +520,15 @@ function showProdutoModal(produto = null) {
                                     </select>
                                 </div>
 
+                                <div class="col-md-6 mb-3 d-flex align-items-end">
+                                    <label class="mb-0">
+                                        <input type="checkbox" id="vendido_por_peso" ${isEdit && Number(produto.vendido_por_peso || 0) === 1 ? 'checked' : ''}>
+                                        Produto vendido por peso (KG)
+                                    </label>
+                                </div>
+
                                 <div class="col-md-4 mb-3">
-                                    <label for="preco_compra" class="form-label">Preço de Compra</label>
+                                    <label for="preco_compra" id="label_preco_compra" class="form-label">Preço de Compra</label>
                                     <input
                                         type="number"
                                         step="0.01"
@@ -529,6 +536,19 @@ function showProdutoModal(produto = null) {
                                         id="preco_compra"
                                         value="${isEdit ? Number(produto.preco_compra || 0) : 0}"
                                     >
+                                </div>
+
+                                <!-- BLOCO PESO -->
+                                <div id="grupoPeso" class="row" style="display:none; margin-top:10px;">
+                                    <div class="col-md-4 mb-3">
+                                        <label>Peso (KG)</label>
+                                        <input type="number" id="peso_peca" step="0.001" placeholder="Ex: 3.300" class="form-control">
+                                    </div>
+
+                                    <div class="col-md-4 mb-3">
+                                        <label>Preço por KG</label>
+                                        <input type="number" id="preco_kg" step="0.01" readonly class="form-control" style="background-color: #e9ecef;">
+                                    </div>
                                 </div>
 
                                 <div class="col-md-4 mb-3">
@@ -665,6 +685,11 @@ function showProdutoModal(produto = null) {
     inicializarCategoriasESubcategorias(produto, isEdit);
     inicializarAutocompleteFornecedor();
     inicializarCalculoPreco(produto, isEdit);
+    
+    // Pequeno delay para garantir que os elementos existam no DOM
+    setTimeout(() => {
+        inicializarBlocoPeso();
+    }, 100);
 
     // ...
 }
@@ -902,7 +927,11 @@ function saveProduto() {
         codigo_barras: ($('#codigo_barras').val() || '').trim(),
         aliquota_icms: parseFloat($('#aliquota_icms').val()) || 0,
         aliquota_pis: parseFloat($('#aliquota_pis').val()) || 0,
-        aliquota_cofins: parseFloat($('#aliquota_cofins').val()) || 0
+        aliquota_cofins: parseFloat($('#aliquota_cofins').val()) || 0,
+        vendido_por_peso: document.getElementById('vendido_por_peso').checked ? 1 : 0,
+        unidade_venda: document.getElementById('vendido_por_peso').checked ? 'KG' : 'UN',
+        peso_peca: parseFloat($('#peso_peca').val()) || 0,
+        preco_kg: parseFloat($('#preco_kg').val()) || 0
     };
 
 
@@ -1090,7 +1119,7 @@ function viewProduto(id) {
         success: function (produto) {
             const produtoNormalizado = normalizarProduto(produto, window.categoriasSistema || []);
             const modalHtml = `
-                <div class="modal fade" id="viewProdutoModal" tabindex="-1" aria-hidden="true">
+                <div class="modal fade" id="viewProdutoModal" tabindex="-1">
                     <div class="modal-dialog">
                         <div class="modal-content">
                             <div class="modal-header d-flex align-items-center justify-content-between">
@@ -1110,6 +1139,9 @@ function viewProduto(id) {
                                 <p><strong>Unidade:</strong> ${escapeHtml(produtoNormalizado.unidade || '-')}</p>
                                 <p><strong>Preço de Compra:</strong> ${formatCurrency(produtoNormalizado.preco_compra || 0)}</p>
                                 <p><strong>Preço de Venda:</strong> ${formatCurrency(produtoNormalizado.preco_venda || 0)}</p>
+                                <p><strong>Margem de Lucro:</strong> ${produtoNormalizado.lucro_percentual ? Number(produtoNormalizado.lucro_percentual).toFixed(2) + '%' : '-'}</p>
+                                <p><strong>Peso da Peça:</strong> ${produtoNormalizado.peso_peca ? Number(produtoNormalizado.peso_peca).toFixed(3) + ' KG' : '-'}</p>
+                                <p><strong>Valor Unitário por KG:</strong> ${produtoNormalizado.preco_kg ? formatCurrency(produtoNormalizado.preco_kg) : '-'}</p>
                                 <p><strong>Estoque Atual:</strong> ${Number(produtoNormalizado.estoque_atual || 0)}</p>
                                 <p><strong>Estoque Mínimo:</strong> ${Number(produtoNormalizado.estoque_minimo || 0)}</p>
                                 <p><strong>Fornecedor:</strong> ${escapeHtml(produtoNormalizado.fornecedor || '-')}</p>
@@ -1142,3 +1174,149 @@ function escapeHtml(text) {
         .replace(/"/g, '&quot;')
         .replace(/'/g, '&#039;');
 }
+
+function numero(valor) {
+    return parseFloat(String(valor || '0').replace(',', '.')) || 0;
+}
+
+function calcularProdutoAutomatico(origem = '') {
+    const vendidoPorPeso = $('#vendido_por_peso').is(':checked');
+    const unidade = $('#unidade').val();
+
+    const precoCompra = numero($('#preco_compra').val());
+    const pesoPeca = numero($('#peso_peca').val());
+    const lucroPercentual = numero($('#lucro_percentual').val());
+    const precoVenda = numero($('#preco_venda').val());
+
+    $('#grupoPeso').toggle(vendidoPorPeso);
+    $('#label_preco_compra').text(vendidoPorPeso ? 'Valor total da peça' : 'Preço de Compra');
+
+    if (vendidoPorPeso) {
+        $('#unidade').val('kg');
+
+        if (pesoPeca > 0 && precoCompra > 0) {
+            const precoKg = precoCompra / pesoPeca;
+            $('#preco_kg').val(precoKg.toFixed(2));
+        } else {
+            $('#preco_kg').val('');
+        }
+    } else {
+        $('#preco_kg').val('');
+    }
+
+    if (origem === 'lucro' || origem === 'compra' || origem === 'peso') {
+        if (lucroPercentual > 0 && lucroPercentual < 100) {
+            let precoBase = precoCompra;
+            
+            // Se vendido por peso, usa o preço por KG como base
+            if (vendidoPorPeso && pesoPeca > 0) {
+                precoBase = precoCompra / pesoPeca; // preço por KG
+            }
+            
+            if (precoBase > 0) {
+                let novoPrecoVenda;
+                
+                if ((vendidoPorPeso || unidade === 'kg' || unidade === 'g')) {
+                    // Para produtos por peso: calcula preço por KG e aplica margem
+                    const precoKg = precoCompra / pesoPeca; // preço por KG real
+                    const precoKgVenda = precoKg / (1 - lucroPercentual / 100); // aplica margem no KG
+                    novoPrecoVenda = precoKgVenda; // preço de venda é o preço por KG com margem
+                } else {
+                    // Cálculo normal para produtos não vendidos por peso
+                    novoPrecoVenda = precoBase / (1 - lucroPercentual / 100);
+                }
+                
+                $('#preco_venda').val(novoPrecoVenda.toFixed(2));
+            }
+        }
+    }
+
+    if (origem === 'venda') {
+        if (precoVenda > 0 && precoCompra > 0) {
+            let precoBase = precoCompra;
+            
+            // Se vendido por peso, usa o preço por KG como base
+            if ((vendidoPorPeso || unidade === 'kg' || unidade === 'g') && pesoPeca > 0) {
+                precoBase = precoCompra / pesoPeca; // preço por KG
+            }
+            
+            if (precoBase > 0) {
+                let novaMargem;
+                
+                if ((vendidoPorPeso || unidade === 'kg' || unidade === 'g')) {
+                    // Calcula margem baseada no preço por KG
+                    const precoKgVenda = precoVenda / pesoPeca;
+                    novaMargem = (1 - precoBase / precoKgVenda) * 100;
+                } else {
+                    // Cálculo normal
+                    novaMargem = (1 - precoBase / precoVenda) * 100;
+                }
+                
+                $('#lucro_percentual').val(novaMargem.toFixed(2));
+            }
+        }
+    }
+}
+
+function inicializarCalculoPreco(produto, isEdit) {
+    $('#preco_compra').off('input').on('input', function () {
+        calcularProdutoAutomatico('compra');
+    });
+
+    $('#peso_peca').off('input').on('input', function () {
+        calcularProdutoAutomatico('peso');
+    });
+
+    $('#lucro_percentual').off('input').on('input', function () {
+        calcularProdutoAutomatico('lucro');
+    });
+
+    $('#preco_venda').off('input').on('input', function () {
+        calcularProdutoAutomatico('venda');
+    });
+
+    $('#vendido_por_peso').off('change').on('change', function () {
+        calcularProdutoAutomatico('compra');
+    });
+
+    $('#unidade').off('change').on('change', function () {
+        if ($(this).val() === 'kg') {
+            $('#vendido_por_peso').prop('checked', true);
+        }
+        calcularProdutoAutomatico('compra');
+    });
+
+    setTimeout(() => {
+        calcularProdutoAutomatico('compra');
+    }, 100);
+}
+
+function inicializarBlocoPeso() {
+    calcularProdutoAutomatico('compra');
+}
+
+// =============================
+// CÁLCULO AUTOMÁTICO VALOR POR KG
+// =============================
+function calcularValorPorKg() {
+    const preco = parseFloat($('#preco_compra').val().replace(',', '.'));
+    const unidade = $('#unidade').val();
+
+    if (unidade === 'kg' && !isNaN(preco)) {
+        $('#valor_por_kg').val(preco.toFixed(2));
+    } else {
+        $('#valor_por_kg').val('');
+    }
+}
+
+// Disparar automático
+$(document).on('input change', '#preco_compra, #unidade', function () {
+    calcularValorPorKg();
+});
+
+// =============================
+// EVENTOS AUTOMÁTICOS
+// =============================
+$(document).ready(function() {
+  inicializarBlocoPeso();
+});

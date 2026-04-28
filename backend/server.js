@@ -78,7 +78,7 @@ app.get('/login', (req, res) => {
 });
 
 // Rotas protegidas (API)
-const produtosRoutes = require('./rotas/produtos');
+const produtosRoutes = require('./routes/produtoRoutes');
 const clientesRoutes = require('./rotas/clientes');
 const comprasRoutes = require('./rotas/compras');
 const categoriasRoutes = require('./rotas/categorias');
@@ -125,6 +125,33 @@ app.get('*.jpg', (req, res, next) => {
 app.use((err, req, res, next) => {
     console.error('Erro:', err);
     res.status(500).json({ error: 'Erro interno do servidor' });
+});
+
+// =============================
+// ROTA BALANÇA (FUTURO)
+// =============================
+app.get('/api/balanca/peso', async (req, res) => {
+  try {
+    // SIMULAÇÃO (remova depois)
+    // const peso = 0.350;
+
+    // MODO REAL (quando integrar)
+    // aqui você vai ler da balança via serial/USB
+
+    return res.json({
+      ok: false,
+      peso: null,
+      mensagem: 'Balança não conectada'
+    });
+
+  } catch (erro) {
+    console.error('Erro balança:', erro);
+
+    return res.json({
+      ok: false,
+      peso: null
+    });
+  }
 });
 
 // Iniciar servidor

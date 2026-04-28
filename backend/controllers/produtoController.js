@@ -1,6 +1,3 @@
-
-const express = require('express');
-const router = express.Router();
 const db = require('../database');
 
 // Função para calcular valor por KG
@@ -12,7 +9,7 @@ const calcularValorKg = (preco, unidade, vendido_por_peso) => {
 };
 
 // LISTAR PRODUTOS
-router.get('/', (req, res) => {
+exports.listarProdutos = (req, res) => {
   db.all(`
     SELECT 
       p.*,
@@ -36,10 +33,10 @@ router.get('/', (req, res) => {
 
     res.json(produtos);
   });
-});
+};
 
 // Buscar produto por código
-router.get('/codigo/:codigo', (req, res) => {
+exports.buscarProdutoPorCodigo = (req, res) => {
   const { codigo } = req.params;
   db.get('SELECT * FROM produtos WHERE codigo = ?', [codigo], (err, row) => {
     if (err) {
@@ -48,11 +45,10 @@ router.get('/codigo/:codigo', (req, res) => {
     }
     res.json(row);
   });
-});
-
+};
 
 // Histórico de preços do produto
-router.get('/:id/historico-precos', (req, res) => {
+exports.historicoPrecos = (req, res) => {
   const { id } = req.params;
   db.all(`
     SELECT * FROM produtos_preco_historico
@@ -65,10 +61,10 @@ router.get('/:id/historico-precos', (req, res) => {
     }
     res.json(rows);
   });
-});
+};
 
 // Relatório de estoque de produtos com data de compra
-router.get('/relatorio-estoque', (req, res) => {
+exports.relatorioEstoque = (req, res) => {
   const { inicio, fim } = req.query;
 
   const filtrosSubconsulta = [];
@@ -144,11 +140,10 @@ router.get('/relatorio-estoque', (req, res) => {
 
     res.json(produtos);
   });
-});
+};
 
-// Buscar produto por ID trazendo o nome da categoria
 // Buscar produto por ID trazendo o nome da categoria e subcategoria
-router.get('/:id', (req, res) => {
+exports.buscarProdutoPorId = (req, res) => {
   db.get(`
     SELECT 
       p.*, 
@@ -172,15 +167,15 @@ router.get('/:id', (req, res) => {
       subcategoria: row.subcategoria_nome || ''
     });
   });
-});
+};
 
 // Criar produto
-router.post('/', (req, res) => {
+exports.criarProduto = (req, res) => {
   const {
     codigo, nome, categoria_id, subcategoria_id, unidade, preco_compra,
     lucro_percentual, preco_venda, estoque_atual, estoque_minimo, fornecedor,
     ncm, cfop, csosn, origem, cest, codigo_barras,
-    aliquota_icms, aliquota_pis, aliquota_cofins, vendido_por_peso, unidade_venda
+    aliquota_icms, aliquota_pis, aliquota_cofins, vendido_por_peso, unidade_venda, peso_peca, preco_kg
   } = req.body;
 
   // Calcular valor por KG
@@ -192,15 +187,15 @@ router.post('/', (req, res) => {
       preco_compra, lucro_percentual, preco_venda,
       estoque_atual, estoque_minimo, fornecedor,
       ncm, cfop, csosn, origem, cest, codigo_barras,
-      aliquota_icms, aliquota_pis, aliquota_cofins, vendido_por_peso, unidade_venda, valor_por_kg
+      aliquota_icms, aliquota_pis, aliquota_cofins, vendido_por_peso, unidade_venda, valor_por_kg, peso_peca, preco_kg
     )
-    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
   `, [
     codigo, nome, categoria_id, subcategoria_id, unidade,
     preco_compra, lucro_percentual, preco_venda,
     estoque_atual || 0, estoque_minimo || 0, fornecedor,
     ncm, cfop, csosn, origem, cest, codigo_barras,
-    aliquota_icms, aliquota_pis, aliquota_cofins, vendido_por_peso || 0, unidade_venda || 'UN', valor_por_kg
+    aliquota_icms, aliquota_pis, aliquota_cofins, vendido_por_peso || 0, unidade_venda || 'UN', valor_por_kg, peso_peca || 0, preco_kg || 0
   ],
     function(err) {
       if (err) {
@@ -230,10 +225,10 @@ router.post('/', (req, res) => {
         });
       });
     });
-});
+};
 
 // Atualizar produto
-router.put('/:id', (req, res) => {
+exports.atualizarProduto = (req, res) => {
   const { id } = req.params;
   const updates = req.body;
 
@@ -321,10 +316,10 @@ router.put('/:id', (req, res) => {
       }
     });
   });
-});
+};
 
 // Deletar produto
-router.delete('/:id', (req, res) => {
+exports.deletarProduto = (req, res) => {
   const { id } = req.params;
   db.run('DELETE FROM produtos WHERE id = ?', [id], function(err) {
     if (err) {
@@ -333,10 +328,10 @@ router.delete('/:id', (req, res) => {
     }
     res.json({ message: 'Produto deletado com sucesso' });
   });
-});
+};
 
 // Buscar produtos com estoque baixo
-router.get('/estoque/baixo', (req, res) => {
+exports.buscarEstoqueBaixo = (req, res) => {
   db.all(`
     SELECT * FROM produtos 
     WHERE estoque_atual <= estoque_minimo 
@@ -348,6 +343,4 @@ router.get('/estoque/baixo', (req, res) => {
     }
     res.json(rows);
   });
-});
-
-module.exports = router;
+};

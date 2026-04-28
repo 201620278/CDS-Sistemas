@@ -6,6 +6,7 @@ let clientesResultados = [];
 let vendaPrazoInfo = null;
 let vendaEmProcessamento = false;
 let pdvClockInterval = null;
+let produtoPesoTemp = null;
 
 function normalizarTexto(texto) {
     return String(texto || '')
@@ -258,16 +259,18 @@ function renderCarrinhoItens() {
         return '<tr><td colspan="5" class="text-center">Nenhum item no carrinho</td></tr>';
     }
 
+    function formatarTextoQuantidade(item) {
+        if (item.unidade === 'KG') {
+            return `${Number(item.quantidade || 0).toFixed(3)} KG x ${Number(item.preco_unitario || 0).toFixed(2)}`;
+        }
+        return `${Number(item.quantidade || 0)} UN x ${Number(item.preco_unitario || 0).toFixed(2)}`;
+    }
+
     return carrinho.map((item, index) => `
         <tr>
             <td>${escapeHtml(item.nome)}</td>
             <td>
-                <input type="number"
-                       class="form-control form-control-sm quantidade-item"
-                       value="${Number(item.quantidade)}"
-                       min="0.01"
-                       step="0.01"
-                       data-index="${index}">
+                ${formatarTextoQuantidade(item)}
             </td>
             <td>${formatCurrency(item.preco_unitario)}</td>
             <td>${formatCurrency(item.subtotal)}</td>
@@ -312,23 +315,165 @@ function adicionarProdutoPorCodigo(codigo) {
         return;
     }
 
-    const itemExistente = carrinho.find(item => item.id === produto.id);
+    adicionarProdutoAoPDV(produto);
+}
 
-    if (itemExistente) {
-        const novaQuantidade = Number(itemExistente.quantidade) + 1;
-        if (novaQuantidade > Number(produto.estoque_atual)) {
+function adicionarProdutoAoPDV(produto) {
+    if (Number(produto.vendido_por_peso) === 1) {
+        abrirModalPeso(produto);
+        return;
+    }
+
+    adicionarItemCarrinho(produto, 1, 'UN');
+}
+
+async function obterPesoBalanca() {
+    return null; // futuro
+}
+
+async function abrirModalPeso(produto) {
+    produtoPesoTemp = produto;
+
+    const nomeProdutoPesoEl = document.getElementById('nomeProdutoPeso');
+    const pesoInputEl = document.getElementById('inputPesoProduto') || document.getElementById('pesoInput');
+    const modalPesoEl = document.getElementById('modalPeso');
+    const previewPesoEl = document.getElementById('previewPeso');
+
+    if (!nomeProdutoPesoEl || !pesoInputEl || !modalPesoEl) {
+        showNotification('Modal de peso não encontrado na tela.', 'danger');
+        return;
+    }
+
+    nomeProdutoPesoEl.innerText = produto.nome;
+    pesoInputEl.value = '';
+    if (previewPesoEl) {
+        previewPesoEl.innerText = '';
+    }
+
+    const pesoBalanca = await obterPesoBalanca();
+
+    if (pesoBalanca) {
+        pesoInputEl.value = pesoBalanca.toFixed(3);
+    }
+
+    modalPesoEl.style.display = 'block';
+    pesoInputEl.focus();
+}
+
+function confirmarPesoProduto() {
+    const pesoInputEl = document.getElementById('inputPesoProduto') || document.getElementById('pesoInput');
+    const modalPesoEl = document.getElementById('modalPeso');
+    const previewPesoEl = document.getElementById('previewPeso');
+    const peso = parseFloat(pesoInputEl ? pesoInputEl.value : '');
+
+    if (!peso || peso <= 0) {
+        alert('Peso inválido');
+        return;
+    }
+
+    if (!produtoPesoTemp) {
+        showNotification('Produto para pesagem não identificado.', 'danger');
+        return;
+    }
+
+    adicionarItemCarrinho(produtoPesoTemp, peso, 'KG');
+
+    if (modalPesoEl) {
+        modalPesoEl.style.display = 'none';
+    }
+    if (pesoInputEl) {
+        pesoInputEl.value = '';
+    }
+    if (previewPesoEl) {
+        previewPesoEl.innerText = '';
+    }
+    produtoPesoTemp = null;
+}
+
+async function lerPesoBalancaNoModal() {
+    const pesoInputEl = document.getElementById('inputPesoProduto') || document.getElementById('pesoInput');
+    const previewPesoEl = document.getElementById('previewPeso');
+    const pesoBalanca = await obterPesoBalanca();
+
+    if (pesoBalanca) {
+        if (pesoInputEl) {
+            pesoInputEl.value = pesoBalanca.toFixed(3);
+        }
+        if (previewPesoEl) {
+            previewPesoEl.innerText = `Peso lido: ${pesoBalanca.toFixed(3)} KG`;
+        }
+        return;
+    }
+
+    if (previewPesoEl) {
+        previewPesoEl.innerText = 'Balança não conectada';
+    }
+}
+
+function fecharModalPeso() {
+    const modalPesoEl = document.getElementById('modalPeso');
+    const pesoInputEl = document.getElementById('inputPesoProduto') || document.getElementById('pesoInput');
+    const previewPesoEl = document.getElementById('previewPeso');
+
+    if (modalPesoEl) {
+        modalPesoEl.style.display = 'none';
+    }
+    if (pesoInputEl) {
+        pesoInputEl.value = '';
+    }
+    if (previewPesoEl) {
+        previewPesoEl.innerText = '';
+    }
+    produtoPesoTemp = null;
+}
+
+function confirmarPeso() {
+    confirmarPesoProduto();
+}
+
+function adicionarItemCarrinho(produto, quantidade, unidade) {
+    const quantidadeNumero = Number(quantidade || 0);
+    if (quantidadeNumero <= 0) return;
+
+    const subtotal = quantidadeNumero * Number(produto.preco_venda || 0);
+    const estoqueDisponivel = Number(produto.estoque_atual || 0);
+
+    if (unidade === 'UN') {
+        const itemExistente = carrinho.find(item => Number(item.produto_id || item.id) === Number(produto.id) && item.unidade === 'UN');
+        if (itemExistente) {
+            const novaQuantidade = Number(itemExistente.quantidade) + quantidadeNumero;
+            if (novaQuantidade > estoqueDisponivel) {
+                showNotification(`Estoque insuficiente para ${produto.nome}. Disponível: ${produto.estoque_atual}`, 'danger');
+                return;
+            }
+            itemExistente.quantidade = novaQuantidade;
+            itemExistente.subtotal = novaQuantidade * Number(itemExistente.preco_unitario);
+        } else {
+            carrinho.push({
+                id: produto.id,
+                produto_id: produto.id,
+                nome: produto.nome,
+                quantidade: quantidadeNumero,
+                unidade,
+                preco_unitario: Number(produto.preco_venda || 0),
+                subtotal,
+                vendido_por_peso: unidade === 'KG' ? 1 : 0
+            });
+        }
+    } else {
+        if (quantidadeNumero > estoqueDisponivel) {
             showNotification(`Estoque insuficiente para ${produto.nome}. Disponível: ${produto.estoque_atual}`, 'danger');
             return;
         }
-        itemExistente.quantidade = novaQuantidade;
-        itemExistente.subtotal = novaQuantidade * Number(itemExistente.preco_unitario);
-    } else {
         carrinho.push({
             id: produto.id,
+            produto_id: produto.id,
             nome: produto.nome,
-            quantidade: 1,
+            quantidade: quantidadeNumero,
+            unidade,
             preco_unitario: Number(produto.preco_venda || 0),
-            subtotal: Number(produto.preco_venda || 0)
+            subtotal,
+            vendido_por_peso: unidade === 'KG' ? 1 : 0
         });
     }
 
@@ -347,7 +492,7 @@ function atualizarQuantidade(index, quantidade) {
         return;
     }
 
-    const produto = produtosDisponiveis.find(p => Number(p.id) === Number(item.id));
+    const produto = produtosDisponiveis.find(p => Number(p.id) === Number(item.produto_id || item.id));
     if (!produto) {
         showNotification('Produto do carrinho não encontrado no cadastro.', 'danger');
         return;
@@ -389,10 +534,6 @@ function atualizarCarrinho() {
     const tbody = $('#carrinho-itens');
     if (tbody.length) {
         tbody.html(renderCarrinhoItens());
-
-        $('.quantidade-item').off('change').on('change', function() {
-            atualizarQuantidade(Number($(this).data('index')), $(this).val());
-        });
 
         $('.item-remover').off('click').on('click', function() {
             removerItemCarrinho(Number($(this).data('index')));
@@ -864,7 +1005,7 @@ function executarFinalizacaoVenda(emitirFiscal = false) {
         total,
         emitir_fiscal: !!emitirFiscal,
         itens: carrinho.map(item => ({
-            produto_id: Number(item.id),
+            produto_id: Number(item.produto_id || item.id),
             quantidade: Number(item.quantidade),
             preco_unitario: Number(item.preco_unitario),
             subtotal: Math.round(Number(item.preco_unitario) * Number(item.quantidade) * 100) / 100

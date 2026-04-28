@@ -46,6 +46,20 @@ const db = new sqlite3.Database(dbPath, (err) => {
 db.dbDir = dbDir;
 db.dbPath = dbPath;
 
+db.all("PRAGMA table_info(produtos)", [], (err, columns) => {
+  if (err) return console.error(err);
+
+  const colunas = columns.map(c => c.name);
+
+  if (!colunas.includes('vendido_por_peso')) {
+    db.run("ALTER TABLE produtos ADD COLUMN vendido_por_peso INTEGER DEFAULT 0");
+  }
+
+  if (!colunas.includes('unidade_venda')) {
+    db.run("ALTER TABLE produtos ADD COLUMN unidade_venda TEXT DEFAULT 'UN'");
+  }
+});
+
 function aplicarAlteracaoSegura(tabela, sql) {
   db.run(sql, (err) => {
     if (err) {
@@ -78,7 +92,11 @@ function aplicarAlteracoesPosCriacao() {
     `ALTER TABLE produtos ADD COLUMN aliquota_icms REAL DEFAULT 0`,
     `ALTER TABLE produtos ADD COLUMN aliquota_pis REAL DEFAULT 0`,
     `ALTER TABLE produtos ADD COLUMN aliquota_cofins REAL DEFAULT 0`,
-    `ALTER TABLE produtos ADD COLUMN lucro_percentual DECIMAL(10,2)`
+    `ALTER TABLE produtos ADD COLUMN lucro_percentual DECIMAL(10,2)`,
+    `ALTER TABLE produtos ADD COLUMN vendido_por_peso INTEGER DEFAULT 0`,
+    `ALTER TABLE produtos ADD COLUMN unidade_venda TEXT DEFAULT 'UN'`,
+    `ALTER TABLE produtos ADD COLUMN peso_peca DECIMAL(10,3) DEFAULT 0`,
+    `ALTER TABLE produtos ADD COLUMN preco_kg DECIMAL(10,2) DEFAULT 0`
   ];
 
   const alteracoesCompras = [
@@ -208,6 +226,8 @@ function criarTabelas() {
         estoque_atual DECIMAL(10,2) DEFAULT 0,
         estoque_minimo DECIMAL(10,2) DEFAULT 0,
         fornecedor VARCHAR(200),
+        vendido_por_peso INTEGER DEFAULT 0,
+        unidade_venda TEXT DEFAULT 'UN',
         created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
         updated_at DATETIME DEFAULT CURRENT_TIMESTAMP,
         FOREIGN KEY (categoria_id) REFERENCES categorias(id),
@@ -466,6 +486,9 @@ function inicializarBanco() {
   db.serialize(() => {
     criarTabelas();
     aplicarAlteracoesPosCriacao();
+  
+  // Adicionar campo valor_por_kg se não existir
+  aplicarAlteracaoSegura('produtos', `ALTER TABLE produtos ADD COLUMN valor_por_kg DECIMAL(10,2) NULL`);
     inserirConfiguracoesPadrao();
     criarUsuarioAdminPadrao();
     garantirCategoriasPadraoDespesa();

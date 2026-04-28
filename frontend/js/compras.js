@@ -603,6 +603,23 @@ function showCompraModal() {
                                 <button class="btn btn-success w-100" onclick="adicionarItemCompra()"><i class="fas fa-plus"></i></button>
                             </div>
                         </div>
+
+                        <div class="row g-2 align-items-end mt-2 p-2 bg-light border rounded">
+                            <div class="col-md-3">
+                                <label class="form-label">Valor total da peça</label>
+                                <input type="number" id="valor_total" step="0.01" placeholder="Ex: 59,40" class="form-control">
+                            </div>
+
+                            <div class="col-md-3">
+                                <label class="form-label">Peso (KG)</label>
+                                <input type="number" id="peso" step="0.001" placeholder="Ex: 3.300" class="form-control">
+                            </div>
+
+                            <div class="col-md-3">
+                                <label class="form-label">Preço por KG</label>
+                                <input type="number" id="preco_kg" step="0.01" readonly class="form-control" style="background-color: #e9ecef;">
+                            </div>
+                        </div>
                         <div class="table-responsive mt-3">
                             <table class="table table-bordered align-middle">
                                 <thead>
@@ -699,6 +716,10 @@ function showCompraModal() {
     $('#compraModal').modal('show');
     renderItensCompraTabela();
     atualizarVisibilidadePagamentoCompra();
+
+    // Event listeners para cálculo de preço por KG
+    document.getElementById('valor_total')?.addEventListener('input', calcularPrecoKg);
+    document.getElementById('peso')?.addEventListener('input', calcularPrecoKg);
 }
 
 function saveCompra() {
@@ -929,4 +950,17 @@ function preencherFormularioCompra(data) {
     // Pagamento padrão
     $('#condicao_pagamento').val('avista');
     atualizarVisibilidadePagamentoCompra();
+}
+
+// Função para calcular preço por KG
+function calcularPrecoKg() {
+    const total = parseFloat(document.getElementById('valor_total')?.value || 0);
+    const peso = parseFloat(document.getElementById('peso')?.value || 0);
+
+    if (peso > 0 && total > 0) {
+        const preco = total / peso;
+        document.getElementById('preco_kg').value = preco.toFixed(2);
+    } else {
+        document.getElementById('preco_kg').value = '';
+    }
 }

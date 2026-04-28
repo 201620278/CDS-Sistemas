@@ -123,6 +123,10 @@ function salvarNota(payload) {
 async function emitirPorVendaId(vendaId) {
   console.log('ENTROU NO EMISSOR FISCAL');
   const { venda, itens } = await carregarVenda(vendaId);
+  const itensNormalizados = (itens || []).map((item) => {
+    const unidade = item.unidade || (item.vendido_por_peso ? 'KG' : 'UN');
+    return { ...item, unidade };
+  });
 
   const existe = await new Promise((resolve, reject) => {
     db.get(
@@ -193,7 +197,7 @@ async function emitirPorVendaId(vendaId) {
     };
   }
 
-  const xmlBase = buildNfceXml({ config, venda, itens, numero });
+  const xmlBase = buildNfceXml({ config, venda, itens: itensNormalizados, numero });
 
   let xmlAssinadoFinal = null;
   let qrCodeUrl = '';
@@ -283,7 +287,7 @@ async function emitirPorVendaId(vendaId) {
 
   const danfeHtml = await gerarDanfeHtml({
     venda,
-    itens,
+    itens: itensNormalizados,
     empresa: {
       nome: config.nomeEmpresa,
       cnpj: config.cnpj,

@@ -178,5 +178,28 @@
             });
         });
     </script>
+
+    <!-- MODAL PESO -->
+    <div id="modalPeso" style="display:none; position:fixed; top:0; left:0; width:100%; height:100%; background:#00000088; z-index:9999;">
+      <div style="background:#fff; padding:20px; width:300px; margin:10% auto; border-radius:8px; text-align:center;">
+
+        <h3 id="nomeProdutoPeso"></h3>
+
+        <input
+          type="number"
+          id="inputPesoProduto"
+          step="0.001"
+          placeholder="0.250"
+          style="width:100%; padding:10px; font-size:18px; margin-top:10px;"
+        >
+
+        <p id="previewPeso" style="margin-top:10px;"></p>
+
+        <button onclick="lerPesoBalancaNoModal()" style="margin-top:10px;">⚖️ Ler balança</button>
+        <button onclick="confirmarPesoProduto()" style="margin-top:10px;">✔ Confirmar</button>
+        <button onclick="fecharModalPeso()" style="margin-top:10px;">❌ Cancelar</button>
+
+      </div>
+    </div>
 </body>
 </html>
