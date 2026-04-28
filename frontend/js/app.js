@@ -167,6 +167,10 @@ function loadPage(page) {
             return typeof loadFornecedores === 'function' ? loadFornecedores() : $('#page-content').html('<div class="alert alert-danger">Erro ao carregar fornecedores.</div>');
         case 'vendas':
             return typeof loadVendas === 'function' ? loadVendas() : $('#page-content').html('<div class="alert alert-danger">Erro ao carregar histórico de vendas.</div>');
+        case 'fechamento-caixa':
+            return typeof showFechamentoCaixa === 'function' ? showFechamentoCaixa() : $('#page-content').html('<div class="alert alert-danger">Erro ao carregar fechamento de caixa.</div>');
+        case 'relatorios':
+            return typeof loadRelatorios === 'function' ? loadRelatorios() : $('#page-content').html('<div class="alert alert-danger">Erro ao carregar relatórios.</div>');
         case 'financeiro':
             return carregarPaginaHtml('financeiro.html', function() {
                 if (typeof initFinanceiro === 'function') {

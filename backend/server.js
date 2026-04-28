@@ -78,7 +78,7 @@ app.get('/login', (req, res) => {
 });
 
 // Rotas protegidas (API)
-const produtosRoutes = require('./routes/produtoRoutes');
+const produtosRoutes = require('./rotas/produtos');
 const clientesRoutes = require('./rotas/clientes');
 const comprasRoutes = require('./rotas/compras');
 const categoriasRoutes = require('./rotas/categorias');
@@ -89,6 +89,7 @@ const configuracoesRoutes = require('./rotas/configuracoes');
 const fiscalRoutes = require('./rotas/fiscal');
 const fornecedoresRoutes = require('./rotas/fornecedores');
 const impressaoRoutes = require('./rotas/impressao');
+const contasReceberRoutes = require('./rotas/contas_receber');
 
 app.use('/api/produtos', verificarToken, produtosRoutes);
 app.use('/api/clientes', verificarToken, clientesRoutes);
@@ -101,6 +102,7 @@ app.use('/api/configuracoes', verificarToken, configuracoesRoutes);
 app.use('/api/fiscal', verificarToken, fiscalRoutes);
 app.use('/api/fornecedores', verificarToken, fornecedoresRoutes);
 app.use('/api/impressao', verificarToken, impressaoRoutes);
+app.use('/api/contas-receber', verificarToken, contasReceberRoutes);
 
 // Rota principal (protegida)
 app.get('/', verificarToken, (req, res) => {

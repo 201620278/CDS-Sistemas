@@ -1,0 +1,88 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+    <meta charset="UTF-8">
+    <title>Fechamento de Caixa</title>
+    <style>
+        body { font-family: Arial, sans-serif; padding: 20px; background: #f5f5f5; }
+        .card { background: #fff; padding: 20px; border-radius: 10px; margin-bottom: 20px; }
+        .grid { display: grid; grid-template-columns: repeat(4, 1fr); gap: 15px; }
+        .box { background: #111827; color: white; padding: 20px; border-radius: 10px; }
+        .box h3 { margin: 0; font-size: 14px; }
+        .box p { font-size: 24px; margin: 10px 0 0; font-weight: bold; }
+        table { width: 100%; border-collapse: collapse; background: white; }
+        th, td { padding: 12px; border-bottom: 1px solid #ddd; text-align: left; }
+        button { padding: 10px 15px; cursor: pointer; background: #2563eb; color: white; border: none; border-radius: 6px; }
+        input { padding: 9px; }
+    </style>
+</head>
+<body>
+
+    <h1>Fechamento de Caixa</h1>
+
+    <div class="card">
+        <label>Data inicial:</label>
+        <input type="date" id="data_inicio">
+
+        <label>Data final:</label>
+        <input type="date" id="data_fim">
+
+        <button onclick="carregarFechamentoCaixa()">Buscar</button>
+    </div>
+
+    <div class="grid">
+        <div class="box">
+            <h3>Total vendido</h3>
+            <p id="total_vendido">R$ 0,00</p>
+        </div>
+
+        <div class="box">
+            <h3>Quantidade de vendas</h3>
+            <p id="quantidade_vendas">0</p>
+        </div>
+
+        <div class="box">
+            <h3>Descontos</h3>
+            <p id="total_descontos">R$ 0,00</p>
+        </div>
+
+        <div class="box">
+            <h3>Ticket médio</h3>
+            <p id="ticket_medio">R$ 0,00</p>
+        </div>
+    </div>
+
+    <div class="card">
+        <h2>Vendas por forma de pagamento</h2>
+        <table>
+            <thead>
+                <tr>
+                    <th>Forma</th>
+                    <th>Quantidade</th>
+                    <th>Total</th>
+                </tr>
+            </thead>
+            <tbody id="tabela_pagamentos"></tbody>
+        </table>
+    </div>
+
+    <div class="card">
+        <h2>Produtos mais vendidos</h2>
+        <table>
+            <thead>
+                <tr>
+                    <th>Código</th>
+                    <th>Produto</th>
+                    <th>Unidade</th>
+                    <th>Quantidade vendida</th>
+                    <th>Total vendido</th>
+                    <th>Preço médio</th>
+                </tr>
+            </thead>
+            <tbody id="tabela_produtos"></tbody>
+        </table>
+    </div>
+
+    <script src="js/fechamento-caixa.js"></script>
+</body>
+</html>
