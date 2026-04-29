@@ -58,13 +58,17 @@ function renderStatusCaixa(resumo) {
 
   $('#status-caixa-area').html(`
     <div class="alert alert-success d-flex align-items-center justify-content-between">
-      <strong>🟢 Caixa Aberto</strong>
+      <strong> Caixa Aberto</strong>
       <span>Aberto desde ${formatarHora(resumo.caixa.aberto_em)}</span>
     </div>
   `);
 }
 
 function renderAbrirCaixa() {
+  // Limpar qualquer modal remanescente e backdrop
+  $('.modal-backdrop').remove();
+  $('body').removeClass('modal-open').css('padding-right', '');
+  
   $('#caixa-area').html(`
     <div class="card">
       <div class="card-header">
@@ -89,9 +93,17 @@ function renderAbrirCaixa() {
     </div>
   `);
 
+  // Timeout maior para garantir que o DOM esteja pronto
   setTimeout(() => {
-    $('#valor-inicial-caixa').focus();
-  }, 100);
+    const campo = $('#valor-inicial-caixa');
+    if (campo.length > 0) {
+      campo.focus();
+      // Garantir que o campo está realmente focado
+      campo.on('focus', function() {
+        $(this).select();
+      });
+    }
+  }, 200);
 }
 
 function pegarValorCampo(id) {
@@ -103,6 +115,10 @@ function pegarValorCampo(id) {
 }
 
 function renderCaixaAberto(resumo) {
+  // Limpar qualquer modal remanescente e backdrop
+  $('.modal-backdrop').remove();
+  $('body').removeClass('modal-open').css('padding-right', '');
+  
   const d = resumo.dinheiro;
   const digital = resumo.digital;
 
@@ -255,30 +271,97 @@ function registrarSangria() {
     return;
   }
 
-  const senhaAdmin = prompt(
-    `Confirme a sangria de ${dinheiro(valor)}\n\nDigite a senha do administrador:` 
-  );
+  // Criar modal para senha de administrador
+  const modalHtml = `
+    <div class="modal fade" id="modalSenhaAdmin" tabindex="-1" style="display: none;">
+      <div class="modal-dialog">
+        <div class="modal-content">
+          <div class="modal-header">
+            <h5 class="modal-title">Senha de Administrador</h5>
+            <button type="button" class="btn-close" onclick="fecharModalSenha()"></button>
+          </div>
+          <div class="modal-body">
+            <p>Confirme a sangria de <strong>${dinheiro(valor)}</strong></p>
+            <label for="senha-admin-input">Digite a senha do administrador:</label>
+            <input type="password" id="senha-admin-input" class="form-control" placeholder="Senha">
+          </div>
+          <div class="modal-footer">
+            <button type="button" class="btn btn-secondary" onclick="fecharModalSenha()">Cancelar</button>
+            <button type="button" class="btn btn-primary" onclick="confirmarSangriaComSenha()">Confirmar</button>
+          </div>
+        </div>
+      </div>
+    </div>
+    <div class="modal-backdrop fade show" id="modal-backdrop-senha" style="display: none;"></div>
+  `;
 
-  if (!senhaAdmin) {
+  // Adicionar modal ao body
+  $('body').append(modalHtml);
+  
+  // Mostrar modal e backdrop
+  $('#modalSenhaAdmin').css('display', 'block').addClass('show');
+  $('#modal-backdrop-senha').css('display', 'block');
+  $('body').addClass('modal-open').css('overflow', 'hidden');
+
+  // Focar no campo de senha
+  setTimeout(() => {
+    $('#senha-admin-input').focus();
+  }, 300);
+
+  // Funções globais para o modal
+  window.fecharModalSenha = function() {
+    $('#modalSenhaAdmin').remove();
+    $('#modal-backdrop-senha').remove();
+    $('body').removeClass('modal-open').css('overflow', '');
     showNotification('Sangria cancelada.', 'warning');
-    return;
-  }
+  };
 
-  $.ajax({
-    url: `${API_URL}/caixa/sangria`,
-    method: 'POST',
-    contentType: 'application/json',
-    data: JSON.stringify({
-      valor,
-      motivo,
-      senha_admin: senhaAdmin
-    }),
-    success: function() {
-      showNotification('Sangria registrada com sucesso.', 'success');
-      carregarCaixaAberto();
-    },
-    error: function(xhr) {
-      showNotification(xhr.responseJSON?.error || 'Erro ao registrar sangria.', 'danger');
+  window.confirmarSangriaComSenha = function() {
+    const senhaAdmin = $('#senha-admin-input').val();
+    
+    if (!senhaAdmin) {
+      showNotification('Digite a senha do administrador.', 'warning');
+      return;
+    }
+
+    // Fechar modal
+    $('#modalSenhaAdmin').remove();
+    $('#modal-backdrop-senha').remove();
+    $('body').removeClass('modal-open').css('overflow', '');
+
+    // Enviar requisição
+    $.ajax({
+      url: `${API_URL}/caixa/sangria`,
+      method: 'POST',
+      contentType: 'application/json',
+      data: JSON.stringify({
+        valor,
+        motivo,
+        senha_admin: senhaAdmin
+      }),
+      success: function() {
+        showNotification('Sangria registrada com sucesso.', 'success');
+        carregarCaixaAberto();
+      },
+      error: function(xhr) {
+        showNotification(xhr.responseJSON?.error || 'Erro ao registrar sangria.', 'danger');
+      }
+    });
+  };
+
+  // Fechar modal com ESC
+  $(document).one('keydown', function(e) {
+    if (e.key === 'Escape') {
+      if (window.fecharModalSenha) {
+        window.fecharModalSenha();
+      }
+    }
+  });
+
+  // Fechar modal clicando no backdrop
+  $('#modal-backdrop-senha').one('click', function() {
+    if (window.fecharModalSenha) {
+      window.fecharModalSenha();
     }
   });
 }

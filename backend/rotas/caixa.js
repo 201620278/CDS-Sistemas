@@ -1,6 +1,7 @@
 const express = require('express');
 const router = express.Router();
 const db = require('../database');
+const { verificarToken } = require('./auth');
 const bcrypt = require('bcryptjs');
 
 function n(valor) {
@@ -108,19 +109,34 @@ function validarSenhaAdmin(senhaAdmin, callback) {
     return callback(null, false);
   }
 
-  db.all(`
-    SELECT *
-    FROM usuarios
-    WHERE tipo = 'admin' OR perfil = 'admin' OR nivel = 'admin'
-  `, [], async (err, admins) => {
+  db.all(`SELECT * FROM usuarios`, [], async (err, usuarios) => {
     if (err) return callback(err);
 
-    if (!admins || admins.length === 0) {
+    if (!usuarios || usuarios.length === 0) {
       return callback(null, false);
     }
 
-    for (const admin of admins) {
-      const senhaBanco = admin.senha || admin.password;
+    for (const usuario of usuarios) {
+      const perfilUsuario = String(
+        usuario.perfil ||
+        usuario.nivel ||
+        usuario.cargo ||
+        usuario.role ||
+        usuario.funcao ||
+        ''
+      ).toLowerCase();
+
+      const isAdmin =
+        perfilUsuario === 'admin' ||
+        perfilUsuario === 'administrador' ||
+        perfilUsuario === 'gerente';
+
+      if (!isAdmin) continue;
+
+      const senhaBanco =
+        usuario.senha ||
+        usuario.password ||
+        usuario.senha_hash;
 
       if (!senhaBanco) continue;
 
@@ -205,7 +221,7 @@ router.post('/abrir', (req, res) => {
   });
 });
 
-router.post('/sangria', (req, res) => {
+router.post('/sangria', verificarToken, async (req, res) => {
   const valor = n(req.body.valor);
   const motivo = req.body.motivo || 'Sangria de caixa';
   const senhaAdmin = req.body.senha_admin;
@@ -214,55 +230,86 @@ router.post('/sangria', (req, res) => {
     return res.status(400).json({ error: 'Informe um valor válido para sangria.' });
   }
 
-  validarSenhaAdmin(senhaAdmin, (senhaErr, senhaOk) => {
-    if (senhaErr) {
-      return res.status(500).json({ error: senhaErr.message });
-    }
+  if (!senhaAdmin) {
+    return res.status(400).json({ error: 'Senha do administrador é obrigatória.' });
+  }
 
-    if (!senhaOk) {
-      return res.status(401).json({
-        error: 'Senha de administrador inválida.'
-      });
-    }
+  if (!req.user || req.user.role !== 'admin') {
+    return res.status(403).json({ error: 'Apenas administrador pode fazer sangria.' });
+  }
 
-    continuarSangria();
-  });
+  db.get(
+    `SELECT id, username, role, password_hash FROM usuarios WHERE id = ?`,
+    [req.user.id],
+    async (errUsuario, usuario) => {
+      if (errUsuario) {
+        return res.status(500).json({ error: errUsuario.message });
+      }
 
-  function continuarSangria() {
-    db.get(`
-      SELECT *
-      FROM caixa
-      WHERE status = 'aberto'
-      ORDER BY id DESC
-      LIMIT 1
-    `, [], (err, caixa) => {
-      if (err) return res.status(500).json({ error: err.message });
-      if (!caixa) return res.status(400).json({ error: 'Nenhum caixa aberto.' });
+      if (!usuario) {
+        return res.status(400).json({ error: 'Usuário logado não encontrado.' });
+      }
 
-      calcularResumoCaixa(caixa, (calcErr, resumo) => {
-        if (calcErr) return res.status(500).json({ error: calcErr.message });
+      const senhaOk = await bcrypt
+        .compare(senhaAdmin, usuario.password_hash)
+        .catch(() => false);
 
-        if (valor > resumo.dinheiro.dinheiro_esperado) {
-          return res.status(400).json({
-            error: 'A sangria não pode ser maior que o dinheiro físico esperado no caixa.'
+      if (!senhaOk) {
+        return res.status(400).json({ error: 'Senha do administrador inválida.' });
+      }
+
+      db.get(
+        `
+        SELECT *
+        FROM caixa
+        WHERE status = 'aberto'
+        ORDER BY id DESC
+        LIMIT 1
+        `,
+        [],
+        (errCaixa, caixa) => {
+          if (errCaixa) {
+            return res.status(500).json({ error: errCaixa.message });
+          }
+
+          if (!caixa) {
+            return res.status(400).json({ error: 'Nenhum caixa aberto.' });
+          }
+
+          calcularResumoCaixa(caixa, (calcErr, resumo) => {
+            if (calcErr) {
+              return res.status(500).json({ error: calcErr.message });
+            }
+
+            if (valor > resumo.dinheiro.dinheiro_esperado) {
+              return res.status(400).json({
+                error: 'A sangria não pode ser maior que o dinheiro físico esperado no caixa.'
+              });
+            }
+
+            db.run(
+              `
+              INSERT INTO caixa_movimentacoes (
+                caixa_id,
+                tipo,
+                valor,
+                motivo
+              ) VALUES (?, 'sangria', ?, ?)
+              `,
+              [caixa.id, valor, motivo],
+              (movErr) => {
+                if (movErr) {
+                  return res.status(500).json({ error: movErr.message });
+                }
+
+                return res.json({ message: 'Sangria registrada com sucesso.' });
+              }
+            );
           });
         }
-
-        db.run(`
-          INSERT INTO caixa_movimentacoes (
-            caixa_id,
-            tipo,
-            valor,
-            motivo
-          ) VALUES (?, 'sangria', ?, ?)
-        `, [caixa.id, valor, motivo], (movErr) => {
-          if (movErr) return res.status(500).json({ error: movErr.message });
-
-          res.json({ message: 'Sangria registrada com sucesso.' });
-        });
-      });
-    });
-  }
+      );
+    }
+  );
 });
 
 router.post('/suprimento', (req, res) => {
