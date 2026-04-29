@@ -743,33 +743,33 @@ function seedUsuarioAdmin() {
 
 
 db.serialize(() => {
-    db.run(`
-        CREATE TABLE IF NOT EXISTS caixa (
-            id INTEGER PRIMARY KEY AUTOINCREMENT,
-            data DATE NOT NULL,
-            valor_inicial DECIMAL(10,2) DEFAULT 0,
-            total_sangrias DECIMAL(10,2) DEFAULT 0,
-            saldo_esperado DECIMAL(10,2) DEFAULT 0,
-            valor_fechamento DECIMAL(10,2) DEFAULT 0,
-            diferenca DECIMAL(10,2) DEFAULT 0,
-            status TEXT DEFAULT 'aberto',
-            observacao TEXT,
-            aberto_em DATETIME DEFAULT CURRENT_TIMESTAMP,
-            fechado_em DATETIME
-        )
-    `);
+  db.run(`
+    CREATE TABLE IF NOT EXISTS caixa (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      data DATE NOT NULL,
+      valor_inicial DECIMAL(10,2) DEFAULT 0,
+      total_sangrias DECIMAL(10,2) DEFAULT 0,
+      saldo_esperado DECIMAL(10,2) DEFAULT 0,
+      valor_fechamento DECIMAL(10,2) DEFAULT 0,
+      diferenca DECIMAL(10,2) DEFAULT 0,
+      status TEXT DEFAULT 'aberto',
+      observacao TEXT,
+      aberto_em DATETIME DEFAULT CURRENT_TIMESTAMP,
+      fechado_em DATETIME
+    )
+  `);
 
-    db.run(`
-        CREATE TABLE IF NOT EXISTS caixa_movimentacoes (
-            id INTEGER PRIMARY KEY AUTOINCREMENT,
-            caixa_id INTEGER NOT NULL,
-            tipo TEXT NOT NULL,
-            valor DECIMAL(10,2) DEFAULT 0,
-            motivo TEXT,
-            criado_em DATETIME DEFAULT CURRENT_TIMESTAMP,
-            FOREIGN KEY (caixa_id) REFERENCES caixa(id)
-        )
-    `);
+  db.run(`
+    CREATE TABLE IF NOT EXISTS caixa_movimentacoes (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      caixa_id INTEGER NOT NULL,
+      tipo TEXT NOT NULL,
+      valor DECIMAL(10,2) DEFAULT 0,
+      motivo TEXT,
+      criado_em DATETIME DEFAULT CURRENT_TIMESTAMP,
+      FOREIGN KEY (caixa_id) REFERENCES caixa(id)
+    )
+  `);
 });
 
 module.exports = db;

@@ -1,226 +1,378 @@
 const express = require('express');
 const router = express.Router();
 const db = require('../database');
+const bcrypt = require('bcryptjs');
 
-function hojeBR() {
-    const agora = new Date();
-
-    const ano = agora.getFullYear();
-    const mes = String(agora.getMonth() + 1).padStart(2, '0');
-    const dia = String(agora.getDate()).padStart(2, '0');
-
-    return `${ano}-${mes}-${dia}`;
+function n(valor) {
+  return Number(valor || 0);
 }
 
-// ABRIR CAIXA
+function hoje() {
+  return new Date().toISOString().slice(0, 10);
+}
+
+function normalizarForma(forma) {
+  return String(forma || '').toLowerCase().trim();
+}
+
+function calcularResumoCaixa(caixa, callback) {
+  const data = caixa.data;
+
+  db.all(`
+    SELECT forma_pagamento, SUM(total) AS total
+    FROM vendas
+    WHERE status = 'concluida'
+      AND DATE(data_venda) = DATE(?)
+    GROUP BY forma_pagamento
+  `, [data], (err, vendas) => {
+    if (err) return callback(err);
+
+    db.get(`
+      SELECT SUM(valor) AS total_sangrias
+      FROM caixa_movimentacoes
+      WHERE caixa_id = ? AND tipo = 'sangria'
+    `, [caixa.id], (err2, sangriasRow) => {
+      if (err2) return callback(err2);
+
+      db.get(`
+        SELECT SUM(valor) AS total_suprimentos
+        FROM caixa_movimentacoes
+        WHERE caixa_id = ? AND tipo = 'suprimento'
+      `, [caixa.id], (err3, suprimentosRow) => {
+        if (err3) return callback(err3);
+
+        let vendasDinheiro = 0;
+        let vendasPix = 0;
+        let vendasCartaoCredito = 0;
+        let vendasCartaoDebito = 0;
+        let vendasPrazo = 0;
+        let outrasFormas = 0;
+
+        (vendas || []).forEach(v => {
+          const forma = normalizarForma(v.forma_pagamento);
+          const total = n(v.total);
+
+          if (forma === 'dinheiro') vendasDinheiro += total;
+          else if (forma === 'pix') vendasPix += total;
+          else if (forma === 'cartao_credito' || forma === 'credito') vendasCartaoCredito += total;
+          else if (forma === 'cartao_debito' || forma === 'debito') vendasCartaoDebito += total;
+          else if (forma === 'prazo') vendasPrazo += total;
+          else outrasFormas += total;
+        });
+
+        const totalSangrias = n(sangriasRow?.total_sangrias);
+        const totalSuprimentos = n(suprimentosRow?.total_suprimentos);
+
+        const totalDigital = vendasPix + vendasCartaoCredito + vendasCartaoDebito;
+        const totalVendido = vendasDinheiro + totalDigital + vendasPrazo + outrasFormas;
+
+        const dinheiroEsperado =
+          n(caixa.valor_inicial) +
+          vendasDinheiro +
+          totalSuprimentos -
+          totalSangrias;
+
+        const saldoGeral =
+          n(caixa.valor_inicial) +
+          totalVendido +
+          totalSuprimentos -
+          totalSangrias;
+
+        callback(null, {
+          caixa,
+          total_vendido: totalVendido,
+          dinheiro: {
+            valor_inicial: n(caixa.valor_inicial),
+            vendas_dinheiro: vendasDinheiro,
+            suprimentos: totalSuprimentos,
+            sangrias: totalSangrias,
+            dinheiro_esperado: dinheiroEsperado
+          },
+          digital: {
+            pix: vendasPix,
+            cartao_credito: vendasCartaoCredito,
+            cartao_debito: vendasCartaoDebito,
+            total_digital: totalDigital
+          },
+          prazo: vendasPrazo,
+          outras_formas: outrasFormas,
+          saldo_geral: saldoGeral
+        });
+      });
+    });
+  });
+}
+
+function validarSenhaAdmin(senhaAdmin, callback) {
+  if (!senhaAdmin) {
+    return callback(null, false);
+  }
+
+  db.all(`
+    SELECT *
+    FROM usuarios
+    WHERE tipo = 'admin' OR perfil = 'admin' OR nivel = 'admin'
+  `, [], async (err, admins) => {
+    if (err) return callback(err);
+
+    if (!admins || admins.length === 0) {
+      return callback(null, false);
+    }
+
+    for (const admin of admins) {
+      const senhaBanco = admin.senha || admin.password;
+
+      if (!senhaBanco) continue;
+
+      const senhaOk = await bcrypt.compare(senhaAdmin, senhaBanco).catch(() => false);
+
+      if (senhaOk || senhaAdmin === senhaBanco) {
+        return callback(null, true);
+      }
+    }
+
+    return callback(null, false);
+  });
+}
+
+router.get('/aberto', (req, res) => {
+  db.get(`
+    SELECT *
+    FROM caixa
+    WHERE status = 'aberto'
+    ORDER BY id DESC
+    LIMIT 1
+  `, [], (err, caixa) => {
+    if (err) return res.status(500).json({ error: err.message });
+    if (!caixa) return res.json(null);
+
+    calcularResumoCaixa(caixa, (calcErr, resumo) => {
+      if (calcErr) return res.status(500).json({ error: calcErr.message });
+      res.json(resumo);
+    });
+  });
+});
+
 router.post('/abrir', (req, res) => {
-    const data = hojeBR();
-    const valorInicial = Number(req.body.valor_inicial || 0);
+  const valorInicial = n(req.body.valor_inicial);
 
-    if (valorInicial < 0) {
-        return res.status(400).json({ error: 'Valor inicial inválido.' });
+  db.get(`
+    SELECT id FROM caixa
+    WHERE status = 'aberto'
+    LIMIT 1
+  `, [], (err, caixaAberto) => {
+    if (err) return res.status(500).json({ error: err.message });
+
+    if (caixaAberto) {
+      return res.status(400).json({
+        error: 'Já existe um caixa aberto. Feche o caixa atual antes de abrir outro.'
+      });
     }
 
-    db.get(`SELECT * FROM caixa WHERE data = ? AND status = 'aberto'`, [data], (err, caixa) => {
-        if (err) return res.status(500).json({ error: err.message });
+    db.run(`
+      INSERT INTO caixa (
+        data,
+        valor_inicial,
+        status,
+        aberto_em
+      ) VALUES (
+        DATE('now', 'localtime'),
+        ?,
+        'aberto',
+        DATETIME('now', 'localtime')
+      )
+    `, [valorInicial], function(insertErr) {
+      if (insertErr) return res.status(500).json({ error: insertErr.message });
 
-        if (caixa) {
-            return res.status(400).json({ error: 'Já existe um caixa aberto hoje.' });
-        }
+      const caixaId = this.lastID;
 
-        db.run(`
-            INSERT INTO caixa (data, valor_inicial, total_sangrias, status, aberto_em)
-            VALUES (?, ?, 0, 'aberto', CURRENT_TIMESTAMP)
-        `, [data, valorInicial], function(err) {
-            if (err) return res.status(500).json({ error: err.message });
+      db.run(`
+        INSERT INTO caixa_movimentacoes (
+          caixa_id,
+          tipo,
+          valor,
+          motivo
+        ) VALUES (?, 'abertura', ?, 'Abertura de caixa')
+      `, [caixaId, valorInicial], (movErr) => {
+        if (movErr) return res.status(500).json({ error: movErr.message });
 
-            res.json({
-                success: true,
-                id: this.lastID,
-                message: 'Caixa aberto com sucesso.'
-            });
+        res.json({
+          message: 'Caixa aberto com sucesso.',
+          caixa_id: caixaId
         });
+      });
     });
+  });
 });
 
-// SANGRIA
 router.post('/sangria', (req, res) => {
-    const data = hojeBR();
-    const valor = Number(req.body.valor || 0);
-    const motivo = req.body.motivo || 'Sangria de caixa';
+  const valor = n(req.body.valor);
+  const motivo = req.body.motivo || 'Sangria de caixa';
+  const senhaAdmin = req.body.senha_admin;
 
-    if (valor <= 0) {
-        return res.status(400).json({ error: 'Informe um valor válido para sangria.' });
+  if (valor <= 0) {
+    return res.status(400).json({ error: 'Informe um valor válido para sangria.' });
+  }
+
+  validarSenhaAdmin(senhaAdmin, (senhaErr, senhaOk) => {
+    if (senhaErr) {
+      return res.status(500).json({ error: senhaErr.message });
     }
 
-    db.get(`SELECT * FROM caixa WHERE data = ? AND status = 'aberto'`, [data], (err, caixa) => {
-        if (err) return res.status(500).json({ error: err.message });
+    if (!senhaOk) {
+      return res.status(401).json({
+        error: 'Senha de administrador inválida.'
+      });
+    }
 
-        if (!caixa) {
-            return res.status(400).json({ error: 'Nenhum caixa aberto hoje.' });
+    continuarSangria();
+  });
+
+  function continuarSangria() {
+    db.get(`
+      SELECT *
+      FROM caixa
+      WHERE status = 'aberto'
+      ORDER BY id DESC
+      LIMIT 1
+    `, [], (err, caixa) => {
+      if (err) return res.status(500).json({ error: err.message });
+      if (!caixa) return res.status(400).json({ error: 'Nenhum caixa aberto.' });
+
+      calcularResumoCaixa(caixa, (calcErr, resumo) => {
+        if (calcErr) return res.status(500).json({ error: calcErr.message });
+
+        if (valor > resumo.dinheiro.dinheiro_esperado) {
+          return res.status(400).json({
+            error: 'A sangria não pode ser maior que o dinheiro físico esperado no caixa.'
+          });
         }
 
         db.run(`
-            INSERT INTO caixa_movimentacoes (caixa_id, tipo, valor, motivo)
-            VALUES (?, 'sangria', ?, ?)
-        `, [caixa.id, valor, motivo], function(err) {
-            if (err) return res.status(500).json({ error: err.message });
+          INSERT INTO caixa_movimentacoes (
+            caixa_id,
+            tipo,
+            valor,
+            motivo
+          ) VALUES (?, 'sangria', ?, ?)
+        `, [caixa.id, valor, motivo], (movErr) => {
+          if (movErr) return res.status(500).json({ error: movErr.message });
 
-            db.run(`
-                UPDATE caixa 
-                SET total_sangrias = total_sangrias + ?
-                WHERE id = ?
-            `, [valor, caixa.id], function(err) {
-                if (err) return res.status(500).json({ error: err.message });
-
-                res.json({ success: true, message: 'Sangria registrada.' });
-            });
+          res.json({ message: 'Sangria registrada com sucesso.' });
         });
+      });
     });
+  }
 });
 
-// RESUMO / FECHAMENTO
-router.get('/fechamento', (req, res) => {
-    const data = req.query.data || hojeBR();
+router.post('/suprimento', (req, res) => {
+  const valor = n(req.body.valor);
+  const motivo = req.body.motivo || 'Suprimento de caixa';
 
-    db.get(`SELECT * FROM caixa WHERE data = ? ORDER BY id DESC LIMIT 1`, [data], (err, caixa) => {
-        if (err) return res.status(500).json({ error: err.message });
+  if (valor <= 0) {
+    return res.status(400).json({ error: 'Informe um valor válido para suprimento.' });
+  }
 
-        if (!caixa) {
-            return res.json({
-                caixa_aberto: false,
-                valor_inicial: 0,
-                total_vendas: 0,
-                total_sangrias: 0,
-                saldo_esperado: 0,
-                formas_pagamento: [],
-                produtos_mais_vendidos: []
-            });
-        }
+  db.get(`
+    SELECT *
+    FROM caixa
+    WHERE status = 'aberto'
+    ORDER BY id DESC
+    LIMIT 1
+  `, [], (err, caixa) => {
+    if (err) return res.status(500).json({ error: err.message });
+    if (!caixa) return res.status(400).json({ error: 'Nenhum caixa aberto.' });
 
-        db.get(`
-            SELECT 
-                COUNT(*) AS quantidade_vendas,
-                COALESCE(SUM(total), 0) AS total_vendas
-            FROM vendas
-            WHERE DATE(data_venda) = DATE(?)
-        `, [data], (err, vendas) => {
-            if (err) return res.status(500).json({ error: err.message });
+    db.run(`
+      INSERT INTO caixa_movimentacoes (
+        caixa_id,
+        tipo,
+        valor,
+        motivo
+      ) VALUES (?, 'suprimento', ?, ?)
+    `, [caixa.id, valor, motivo], (movErr) => {
+      if (movErr) return res.status(500).json({ error: movErr.message });
 
-            db.all(`
-                SELECT 
-                    forma_pagamento,
-                    COUNT(*) AS quantidade,
-                    COALESCE(SUM(total), 0) AS total
-                FROM vendas
-                WHERE DATE(data_venda) = DATE(?)
-                GROUP BY forma_pagamento
-                ORDER BY total DESC
-            `, [data], (err, formas) => {
-                if (err) return res.status(500).json({ error: err.message });
-
-                db.all(`
-                    SELECT 
-                        p.codigo,
-                        p.nome,
-                        p.unidade,
-                        COALESCE(SUM(vi.quantidade), 0) AS quantidade,
-                        COALESCE(SUM(vi.subtotal), 0) AS total
-                    FROM vendas_itens vi
-                    INNER JOIN vendas v ON v.id = vi.venda_id
-                    INNER JOIN produtos p ON p.id = vi.produto_id
-                    WHERE DATE(v.data_venda) = DATE(?)
-                    GROUP BY p.id
-                    ORDER BY quantidade DESC
-                    LIMIT 20
-                `, [data], (err, produtos) => {
-                    if (err) return res.status(500).json({ error: err.message });
-
-                    const totalVendas = Number(vendas.total_vendas || 0);
-                    const valorInicial = Number(caixa.valor_inicial || 0);
-                    const sangrias = Number(caixa.total_sangrias || 0);
-
-                    const vendasDinheiro = (formas || [])
-                        .filter(f => f.forma_pagamento === 'dinheiro')
-                        .reduce((total, f) => total + Number(f.total || 0), 0);
-
-                    const recebidoDigital = (formas || [])
-                        .filter(f => f.forma_pagamento !== 'dinheiro')
-                        .reduce((total, f) => total + Number(f.total || 0), 0);
-
-                    const dinheiroEmCaixa = valorInicial + vendasDinheiro - sangrias;
-
-                    const saldoGeral = valorInicial + totalVendas - sangrias;
-
-                    res.json({
-                        caixa_aberto: caixa.status === 'aberto',
-                        status: caixa.status,
-                        valor_inicial: valorInicial,
-                        quantidade_vendas: vendas.quantidade_vendas || 0,
-                        total_vendas: totalVendas,
-                        total_sangrias: sangrias,
-                        vendas_dinheiro: vendasDinheiro,
-                        recebido_digital: recebidoDigital,
-                        dinheiro_em_caixa: dinheiroEmCaixa,
-                        saldo_geral: saldoGeral,
-                        saldo_esperado: saldoGeral,
-                        formas_pagamento: formas || [],
-                        produtos_mais_vendidos: produtos || []
-                    });
-                });
-            });
-        });
+      res.json({ message: 'Suprimento registrado com sucesso.' });
     });
+  });
 });
 
-// FECHAR CAIXA
 router.post('/fechar', (req, res) => {
-    const data = hojeBR();
-    const valorInformado = Number(req.body.valor_informado || 0);
-    const observacao = req.body.observacao || '';
+  const valorFechamento = n(req.body.valor_fechamento);
+  const observacao = req.body.observacao || '';
 
-    db.get(`SELECT * FROM caixa WHERE data = ? AND status = 'aberto'`, [data], (err, caixa) => {
-        if (err) return res.status(500).json({ error: err.message });
+  db.get(`
+    SELECT *
+    FROM caixa
+    WHERE status = 'aberto'
+    ORDER BY id DESC
+    LIMIT 1
+  `, [], (err, caixa) => {
+    if (err) return res.status(500).json({ error: err.message });
+    if (!caixa) return res.status(400).json({ error: 'Nenhum caixa aberto.' });
 
-        if (!caixa) {
-            return res.status(400).json({ error: 'Nenhum caixa aberto para fechar.' });
-        }
+    calcularResumoCaixa(caixa, (calcErr, resumo) => {
+      if (calcErr) return res.status(500).json({ error: calcErr.message });
 
-        db.get(`
-            SELECT COALESCE(SUM(total), 0) AS total_vendas
-            FROM vendas
-            WHERE DATE(data_venda) = DATE(?)
-        `, [data], (err, vendas) => {
-            if (err) return res.status(500).json({ error: err.message });
+      const dinheiroEsperado = resumo.dinheiro.dinheiro_esperado;
+      const diferenca = valorFechamento - dinheiroEsperado;
 
-            const saldoEsperado =
-                Number(caixa.valor_inicial || 0) +
-                Number(vendas.total_vendas || 0) -
-                Number(caixa.total_sangrias || 0);
+      db.run(`
+        UPDATE caixa SET
+          total_sangrias = ?,
+          saldo_esperado = ?,
+          valor_fechamento = ?,
+          diferenca = ?,
+          observacao = ?,
+          status = 'fechado',
+          fechado_em = DATETIME('now', 'localtime')
+        WHERE id = ?
+      `, [
+        resumo.dinheiro.sangrias,
+        dinheiroEsperado,
+        valorFechamento,
+        diferenca,
+        observacao,
+        caixa.id
+      ], (updateErr) => {
+        if (updateErr) return res.status(500).json({ error: updateErr.message });
 
-            const diferenca = valorInformado - saldoEsperado;
-
-            db.run(`
-                UPDATE caixa
-                SET status = 'fechado',
-                    valor_fechamento = ?,
-                    saldo_esperado = ?,
-                    diferenca = ?,
-                    observacao = ?,
-                    fechado_em = CURRENT_TIMESTAMP
-                WHERE id = ?
-            `, [valorInformado, saldoEsperado, diferenca, observacao, caixa.id], function(err) {
-                if (err) return res.status(500).json({ error: err.message });
-
-                res.json({
-                    success: true,
-                    saldo_esperado: saldoEsperado,
-                    valor_informado: valorInformado,
-                    diferenca
-                });
-            });
+        res.json({
+          message: 'Caixa fechado com sucesso.',
+          resumo: {
+            ...resumo,
+            valor_fechamento: valorFechamento,
+            diferenca
+          }
         });
+      });
     });
+  });
+});
+
+router.get('/historico', (req, res) => {
+  db.all(`
+    SELECT *
+    FROM caixa
+    ORDER BY id DESC
+    LIMIT 100
+  `, [], (err, rows) => {
+    if (err) return res.status(500).json({ error: err.message });
+    res.json(rows || []);
+  });
+});
+
+router.get('/movimentacoes/:caixa_id', (req, res) => {
+  db.all(`
+    SELECT *
+    FROM caixa_movimentacoes
+    WHERE caixa_id = ?
+    ORDER BY id DESC
+  `, [req.params.caixa_id], (err, rows) => {
+    if (err) return res.status(500).json({ error: err.message });
+    res.json(rows || []);
+  });
 });
 
 module.exports = router;

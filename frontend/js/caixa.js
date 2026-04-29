@@ -1,362 +1,328 @@
-function moedaCaixa(valor) {
-    return Number(valor || 0).toLocaleString('pt-BR', {
-        style: 'currency',
-        currency: 'BRL'
-    });
-}
-
-function hojeCaixa() {
-    const agora = new Date();
-
-    const ano = agora.getFullYear();
-    const mes = String(agora.getMonth() + 1).padStart(2, '0');
-    const dia = String(agora.getDate()).padStart(2, '0');
-
-    return `${ano}-${mes}-${dia}`;
-}
-
 function loadCaixa() {
-    const html = `
-        <div class="container-fluid">
-            <div class="d-flex justify-content-between align-items-center mb-4">
-                <div>
-                    <h2><i class="fas fa-cash-register"></i> Fechamento de Caixa</h2>
-                    <small class="text-muted">Controle simples para mercadinho</small>
-                </div>
-            </div>
+  $('#page-content').html(`
+    <div class="container-fluid">
+      <h2 class="mb-3">Fechamento de Caixa</h2>
 
-            <div class="card mb-3">
-                <div class="card-body d-flex gap-2 align-items-end">
-                    <div>
-                        <label>Data do caixa</label>
-                        <input type="date" id="data_caixa" class="form-control">
-                    </div>
+      <div id="status-caixa-area" class="mb-3"></div>
+      <div id="caixa-area"></div>
+    </div>
+  `);
 
-                    <button class="btn btn-primary" onclick="carregarFechamentoCaixa()">
-                        Buscar
-                    </button>
-                </div>
-            </div>
-
-            <div class="card mb-3">
-                <div class="card-body">
-                    <button class="btn btn-success" onclick="abrirModalAbrirCaixa()">
-                        Abrir Caixa
-                    </button>
-
-                    <button class="btn btn-warning" onclick="abrirModalSangria()">
-                        Sangria
-                    </button>
-
-                    <button class="btn btn-danger" onclick="abrirModalFecharCaixa()">
-                        Fechar Caixa
-                    </button>
-
-                    <button class="btn btn-primary" onclick="carregarFechamentoCaixa()">
-                        Atualizar
-                    </button>
-                </div>
-            </div>
-
-            <div class="row mb-3">
-                <div class="col-md-3">
-                    <div class="card text-bg-dark">
-                        <div class="card-body">
-                            <h6>Valor Inicial</h6>
-                            <h3 id="cx_valor_inicial">R$ 0,00</h3>
-                        </div>
-                    </div>
-                </div>
-
-                <div class="col-md-3">
-                    <div class="card text-bg-success">
-                        <div class="card-body">
-                            <h6>Total Vendido</h6>
-                            <h3 id="cx_total_vendas">R$ 0,00</h3>
-                        </div>
-                    </div>
-                </div>
-
-                <div class="col-md-3">
-                    <div class="card text-bg-warning">
-                        <div class="card-body">
-                            <h6>Sangrias</h6>
-                            <h3 id="cx_sangrias">R$ 0,00</h3>
-                        </div>
-                    </div>
-                </div>
-
-                <div class="col-md-3">
-                    <div class="card text-bg-primary">
-                        <div class="card-body">
-                            <h6>Saldo Esperado</h6>
-                            <h3 id="cx_saldo">R$ 0,00</h3>
-                        </div>
-                    </div>
-                </div>
-
-                <div class="col-md-3">
-                    <div class="card text-bg-info">
-                        <div class="card-body">
-                            <h6>Dinheiro em Caixa</h6>
-                            <h3 id="cx_dinheiro_caixa">R$ 0,00</h3>
-                        </div>
-                    </div>
-                </div>
-
-                <div class="col-md-3">
-                    <div class="card text-bg-secondary">
-                        <div class="card-body">
-                            <h6>Recebido Digital</h6>
-                            <h3 id="cx_recebido_digital">R$ 0,00</h3>
-                        </div>
-                    </div>
-                </div>
-            </div>
-
-            <div class="alert alert-info" id="cx_status">Carregando caixa...</div>
-
-            <div class="card mb-3">
-                <div class="card-header"><strong>Formas de Pagamento</strong></div>
-                <div class="card-body table-responsive">
-                    <table class="table table-striped">
-                        <thead>
-                            <tr>
-                                <th>Forma</th>
-                                <th>Qtd.</th>
-                                <th>Total</th>
-                            </tr>
-                        </thead>
-                        <tbody id="cx_formas_pagamento"></tbody>
-                    </table>
-                </div>
-            </div>
-
-            <div class="card">
-                <div class="card-header"><strong>Produtos Mais Vendidos</strong></div>
-                <div class="card-body table-responsive">
-                    <table class="table table-striped">
-                        <thead>
-                            <tr>
-                                <th>Código</th>
-                                <th>Produto</th>
-                                <th>Unidade</th>
-                                <th>Quantidade</th>
-                                <th>Total</th>
-                            </tr>
-                        </thead>
-                        <tbody id="cx_produtos"></tbody>
-                    </table>
-                </div>
-            </div>
-        </div>
-
-        <div id="caixa-modals"></div>
-    `;
-
-    $('#page-content').html(html);
-    carregarFechamentoCaixa();
+  carregarCaixaAberto();
 }
 
-function carregarFechamentoCaixa() {
-    let data = $('#data_caixa').val();
+function dinheiro(v) {
+  return formatCurrency(Number(v || 0));
+}
 
-    if (!data) {
-        data = new Date().toISOString().split('T')[0];
-        $('#data_caixa').val(data);
+function carregarCaixaAberto() {
+  $.get(`${API_URL}/caixa/aberto`, function(resumo) {
+    if (!resumo) {
+      renderStatusCaixa(null);
+      renderAbrirCaixa();
+      return;
     }
 
-    $.get(`${API_URL}/caixa/fechamento`, {
-    data: $('#data_caixa').val(),
-    _: Date.now()
-}, function(dados) {
-        $('#cx_valor_inicial').text(moedaCaixa(dados.valor_inicial));
-        $('#cx_total_vendas').text(moedaCaixa(dados.total_vendas));
-        $('#cx_sangrias').text(moedaCaixa(dados.total_sangrias));
-        $('#cx_dinheiro_caixa').text(moedaCaixa(dados.dinheiro_em_caixa));
-        $('#cx_recebido_digital').text(moedaCaixa(dados.recebido_digital));
-        $('#cx_saldo').text(moedaCaixa(dados.saldo_geral));
-
-        $('#cx_status')
-            .removeClass('alert-info alert-success alert-danger')
-            .addClass(dados.caixa_aberto ? 'alert-success' : 'alert-danger')
-            .text(dados.caixa_aberto ? 'Caixa aberto' : 'Caixa fechado ou não aberto');
-
-        let formasHtml = '';
-
-        (dados.formas_pagamento || []).forEach(item => {
-            formasHtml += `
-                <tr>
-                    <td>${item.forma_pagamento || '-'}</td>
-                    <td>${item.quantidade || 0}</td>
-                    <td>${moedaCaixa(item.total)}</td>
-                </tr>
-            `;
-        });
-
-        $('#cx_formas_pagamento').html(
-            formasHtml || '<tr><td colspan="3" class="text-center">Nenhuma venda</td></tr>'
-        );
-
-        let produtosHtml = '';
-
-        (dados.produtos_mais_vendidos || []).forEach(item => {
-            produtosHtml += `
-                <tr>
-                    <td>${item.codigo || '-'}</td>
-                    <td>${item.nome || '-'}</td>
-                    <td>${item.unidade || '-'}</td>
-                    <td>${Number(item.quantidade || 0).toFixed(3)}</td>
-                    <td>${moedaCaixa(item.total)}</td>
-                </tr>
-            `;
-        });
-
-        $('#cx_produtos').html(
-            produtosHtml || '<tr><td colspan="5" class="text-center">Nenhum produto vendido</td></tr>'
-        );
-    });
+    renderStatusCaixa(resumo);
+    renderCaixaAberto(resumo);
+  }).fail(function(xhr) {
+    showNotification(xhr.responseJSON?.error || 'Erro ao carregar caixa.', 'danger');
+  });
 }
 
-function abrirModalAbrirCaixa() {
-    $('#caixa-modals').html(`
-        <div class="modal fade" id="modalAbrirCaixa" tabindex="-1">
-            <div class="modal-dialog">
-                <div class="modal-content">
-                    <div class="modal-header"><h5>Abrir Caixa</h5></div>
-                    <div class="modal-body">
-                        <label>Valor inicial</label>
-                        <input type="number" id="valor_inicial_caixa" class="form-control" step="0.01" min="0" value="0">
-                    </div>
-                    <div class="modal-footer">
-                        <button class="btn btn-secondary" data-bs-dismiss="modal">Cancelar</button>
-                        <button class="btn btn-success" onclick="confirmarAbrirCaixa()">Abrir</button>
-                    </div>
-                </div>
-            </div>
-        </div>
+function formatarHora(dataTexto) {
+  if (!dataTexto) return '--:--';
+
+  const data = new Date(String(dataTexto).replace(' ', 'T'));
+
+  if (isNaN(data.getTime())) {
+    return String(dataTexto).slice(11, 16) || '--:--';
+  }
+
+  return data.toLocaleTimeString('pt-BR', {
+    hour: '2-digit',
+    minute: '2-digit'
+  });
+}
+
+function renderStatusCaixa(resumo) {
+  if (!resumo) {
+    $('#status-caixa-area').html(`
+      <div class="alert alert-danger d-flex align-items-center justify-content-between">
+        <strong>🔴 Caixa Fechado</strong>
+        <span>Abra o caixa para iniciar as vendas e movimentações.</span>
+      </div>
     `);
+    return;
+  }
 
-    new bootstrap.Modal(document.getElementById('modalAbrirCaixa')).show();
+  $('#status-caixa-area').html(`
+    <div class="alert alert-success d-flex align-items-center justify-content-between">
+      <strong>🟢 Caixa Aberto</strong>
+      <span>Aberto desde ${formatarHora(resumo.caixa.aberto_em)}</span>
+    </div>
+  `);
 }
 
-function confirmarAbrirCaixa() {
-    $.post(`${API_URL}/caixa/abrir`, {
-        valor_inicial: Number($('#valor_inicial_caixa').val() || 0)
-    })
-    .done(() => {
-        bootstrap.Modal.getInstance(document.getElementById('modalAbrirCaixa')).hide();
-        showNotification('Caixa aberto com sucesso.', 'success');
-        carregarFechamentoCaixa();
-    })
-    .fail(xhr => {
-        showNotification(xhr.responseJSON?.error || 'Erro ao abrir caixa.', 'danger');
-    });
+function renderAbrirCaixa() {
+  $('#caixa-area').html(`
+    <div class="card">
+      <div class="card-header">
+        <strong>Abrir Caixa</strong>
+      </div>
+      <div class="card-body">
+        <label>Valor inicial em dinheiro</label>
+
+        <input 
+          type="text"
+          inputmode="decimal"
+          id="valor-inicial-caixa"
+          class="form-control mb-3"
+          placeholder="Ex: 50,00"
+          autocomplete="off"
+        >
+
+        <button type="button" class="btn btn-success" onclick="abrirCaixa()">
+          Abrir Caixa
+        </button>
+      </div>
+    </div>
+  `);
+
+  setTimeout(() => {
+    $('#valor-inicial-caixa').focus();
+  }, 100);
 }
 
-function abrirModalSangria() {
-    $('#caixa-modals').html(`
-        <div class="modal fade" id="modalSangria" tabindex="-1">
-            <div class="modal-dialog">
-                <div class="modal-content">
-                    <div class="modal-header"><h5>Registrar Sangria</h5></div>
-                    <div class="modal-body">
-                        <label>Valor</label>
-                        <input type="number" id="valor_sangria" class="form-control mb-2" step="0.01" min="0">
+function pegarValorCampo(id) {
+  let valor = String($(id).val() || '')
+    .replace(/\./g, '')
+    .replace(',', '.');
 
-                        <label>Motivo</label>
-                        <input type="text" id="motivo_sangria" class="form-control" value="Retirada de dinheiro">
-                    </div>
-                    <div class="modal-footer">
-                        <button class="btn btn-secondary" data-bs-dismiss="modal">Cancelar</button>
-                        <button class="btn btn-warning" onclick="confirmarSangria()">Registrar</button>
-                    </div>
-                </div>
-            </div>
+  return Number(valor || 0);
+}
+
+function renderCaixaAberto(resumo) {
+  const d = resumo.dinheiro;
+  const digital = resumo.digital;
+
+  $('#caixa-area').html(`
+    <div class="row">
+      <div class="col-md-4">
+        <div class="card mb-3">
+          <div class="card-header bg-dark text-white">
+            Dinheiro Físico
+          </div>
+          <div class="card-body">
+            <p>Valor Inicial: <strong>${dinheiro(d.valor_inicial)}</strong></p>
+            <p>Vendas em Dinheiro: <strong>${dinheiro(d.vendas_dinheiro)}</strong></p>
+            <p>Suprimentos: <strong>${dinheiro(d.suprimentos)}</strong></p>
+            <p>Sangrias: <strong>${dinheiro(d.sangrias)}</strong></p>
+            <hr>
+            <h4>Dinheiro Esperado: ${dinheiro(d.dinheiro_esperado)}</h4>
+          </div>
         </div>
-    `);
+      </div>
 
-    new bootstrap.Modal(document.getElementById('modalSangria'), {
-        backdrop: 'static'
-    }).show();
+      <div class="col-md-4">
+        <div class="card mb-3">
+          <div class="card-header bg-primary text-white">
+            Recebimentos Digitais
+          </div>
+          <div class="card-body">
+            <p>PIX: <strong>${dinheiro(digital.pix)}</strong></p>
+            <p>Cartão Crédito: <strong>${dinheiro(digital.cartao_credito)}</strong></p>
+            <p>Cartão Débito: <strong>${dinheiro(digital.cartao_debito)}</strong></p>
+            <hr>
+            <h4>Total Digital: ${dinheiro(digital.total_digital)}</h4>
+          </div>
+        </div>
+      </div>
+
+      <div class="col-md-4">
+        <div class="card mb-3">
+          <div class="card-header bg-success text-white">
+            Resumo Geral
+          </div>
+          <div class="card-body">
+            <p>Total Vendido: <strong>${dinheiro(resumo.total_vendido)}</strong></p>
+            <p>Vendas a Prazo: <strong>${dinheiro(resumo.prazo)}</strong></p>
+            <p>Outras Formas: <strong>${dinheiro(resumo.outras_formas)}</strong></p>
+            <hr>
+            <h4>Saldo Geral: ${dinheiro(resumo.saldo_geral)}</h4>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <div class="card mb-3">
+      <div class="card-header">
+        <strong>Movimentações do Caixa</strong>
+      </div>
+
+      <div class="card-body">
+        <div class="row">
+          <div class="col-md-4">
+            <label>Valor da Sangria</label>
+            <input type="text" inputmode="decimal" id="valor-sangria" class="form-control" placeholder="Ex: 50,00">
+          </div>
+
+          <div class="col-md-5">
+            <label>Motivo</label>
+            <input type="text" id="motivo-sangria" class="form-control" placeholder="Ex: retirada para pagamento">
+          </div>
+
+          <div class="col-md-3 d-flex align-items-end">
+            <button type="button" class="btn btn-warning w-100" onclick="registrarSangria()">
+              Registrar Sangria
+            </button>
+          </div>
+        </div>
+
+        <hr>
+
+        <div class="row">
+          <div class="col-md-4">
+            <label>Valor do Suprimento</label>
+            <input type="text" inputmode="decimal" id="valor-suprimento" class="form-control" placeholder="Ex: 100,00">
+          </div>
+
+          <div class="col-md-5">
+            <label>Motivo</label>
+            <input type="text" id="motivo-suprimento" class="form-control" placeholder="Ex: reforço de troco">
+          </div>
+
+          <div class="col-md-3 d-flex align-items-end">
+            <button type="button" class="btn btn-info w-100" onclick="registrarSuprimento()">
+              Registrar Suprimento
+            </button>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <div class="card">
+      <div class="card-header bg-danger text-white">
+        <strong>Fechar Caixa</strong>
+      </div>
+
+      <div class="card-body">
+        <p>Informe abaixo o dinheiro físico contado na gaveta.</p>
+
+        <label>Dinheiro contado no caixa</label>
+        <input type="text" inputmode="decimal" id="valor-fechamento" class="form-control mb-3" placeholder="Ex: 100,00">
+
+        <label>Observação</label>
+        <textarea id="observacao-fechamento" class="form-control mb-3"></textarea>
+
+        <button type="button" class="btn btn-danger" onclick="fecharCaixa()">
+          Fechar Caixa
+        </button>
+      </div>
+    </div>
+  `);
 }
 
-function confirmarSangria() {
-    const valor = Number($('#valor_sangria').val() || 0);
-    const motivo = $('#motivo_sangria').val();
+function abrirCaixa() {
+  const valor = pegarValorCampo('#valor-inicial-caixa');
 
-    if (valor <= 0) {
-        showNotification('Informe um valor válido.', 'warning');
-        return;
+  if (valor < 0) {
+    showNotification('Informe um valor inicial válido.', 'warning');
+    return;
+  }
+
+  $.ajax({
+    url: `${API_URL}/caixa/abrir`,
+    method: 'POST',
+    contentType: 'application/json',
+    data: JSON.stringify({ valor_inicial: valor }),
+    success: function() {
+      showNotification('Caixa aberto com sucesso.', 'success');
+      carregarCaixaAberto();
+    },
+    error: function(xhr) {
+      showNotification(xhr.responseJSON?.error || 'Erro ao abrir caixa.', 'danger');
     }
-
-    $.post(`${API_URL}/caixa/sangria`, {
-        valor,
-        motivo
-    })
-    .done(() => {
-        document.activeElement.blur();
-
-        const modalEl = document.getElementById('modalSangria');
-        const modal = bootstrap.Modal.getInstance(modalEl);
-
-        if (modal) modal.hide();
-
-        setTimeout(() => {
-            $('.modal-backdrop').remove();
-            $('body').removeClass('modal-open').css('padding-right', '');
-
-            carregarFechamentoCaixa();
-        }, 300);
-
-        showNotification('Sangria registrada com sucesso.', 'success');
-    })
-    .fail((xhr) => {
-        console.error(xhr.responseText);
-
-        showNotification(
-            xhr.responseJSON?.error || 'Erro ao registrar sangria.',
-            'danger'
-        );
-    });
+  });
 }
 
-function abrirModalFecharCaixa() {
-    $('#caixa-modals').html(`
-        <div class="modal fade" id="modalFecharCaixa" tabindex="-1">
-            <div class="modal-dialog">
-                <div class="modal-content">
-                    <div class="modal-header"><h5>Fechar Caixa</h5></div>
-                    <div class="modal-body">
-                        <label>Valor contado no caixa</label>
-                        <input type="number" id="valor_fechamento_caixa" class="form-control mb-2" step="0.01" min="0">
+function registrarSangria() {
+  const valor = pegarValorCampo('#valor-sangria');
+  const motivo = $('#motivo-sangria').val();
 
-                        <label>Observação</label>
-                        <textarea id="observacao_fechamento" class="form-control"></textarea>
-                    </div>
-                    <div class="modal-footer">
-                        <button class="btn btn-secondary" data-bs-dismiss="modal">Cancelar</button>
-                        <button class="btn btn-danger" onclick="confirmarFecharCaixa()">Fechar Caixa</button>
-                    </div>
-                </div>
-            </div>
-        </div>
-    `);
+  if (valor <= 0) {
+    showNotification('Informe um valor válido para sangria.', 'warning');
+    return;
+  }
 
-    new bootstrap.Modal(document.getElementById('modalFecharCaixa')).show();
+  const senhaAdmin = prompt(
+    `Confirme a sangria de ${dinheiro(valor)}\n\nDigite a senha do administrador:` 
+  );
+
+  if (!senhaAdmin) {
+    showNotification('Sangria cancelada.', 'warning');
+    return;
+  }
+
+  $.ajax({
+    url: `${API_URL}/caixa/sangria`,
+    method: 'POST',
+    contentType: 'application/json',
+    data: JSON.stringify({
+      valor,
+      motivo,
+      senha_admin: senhaAdmin
+    }),
+    success: function() {
+      showNotification('Sangria registrada com sucesso.', 'success');
+      carregarCaixaAberto();
+    },
+    error: function(xhr) {
+      showNotification(xhr.responseJSON?.error || 'Erro ao registrar sangria.', 'danger');
+    }
+  });
 }
 
-function confirmarFecharCaixa() {
-    $.post(`${API_URL}/caixa/fechar`, {
-        valor_informado: Number($('#valor_fechamento_caixa').val() || 0),
-        observacao: $('#observacao_fechamento').val()
-    })
-    .done(res => {
-        bootstrap.Modal.getInstance(document.getElementById('modalFecharCaixa')).hide();
-        showNotification(`Caixa fechado. Diferença: ${moedaCaixa(res.diferenca)}`, 'success');
-        carregarFechamentoCaixa();
-    })
-    .fail(xhr => {
-        showNotification(xhr.responseJSON?.error || 'Erro ao fechar caixa.', 'danger');
-    });
+function registrarSuprimento() {
+  const valor = pegarValorCampo('#valor-suprimento');
+  const motivo = $('#motivo-suprimento').val();
+
+  $.ajax({
+    url: `${API_URL}/caixa/suprimento`,
+    method: 'POST',
+    contentType: 'application/json',
+    data: JSON.stringify({ valor, motivo }),
+    success: function() {
+      showNotification('Suprimento registrado com sucesso.', 'success');
+      carregarCaixaAberto();
+    },
+    error: function(xhr) {
+      showNotification(xhr.responseJSON?.error || 'Erro ao registrar suprimento.', 'danger');
+    }
+  });
+}
+
+function fecharCaixa() {
+  const valorFechamento = pegarValorCampo('#valor-fechamento');
+  const observacao = $('#observacao-fechamento').val();
+
+  if (!confirm('Tem certeza que deseja fechar o caixa?')) return;
+
+  $.ajax({
+    url: `${API_URL}/caixa/fechar`,
+    method: 'POST',
+    contentType: 'application/json',
+    data: JSON.stringify({
+      valor_fechamento: valorFechamento,
+      observacao
+    }),
+    success: function(res) {
+      showNotification('Caixa fechado com sucesso.', 'success');
+      carregarCaixaAberto();
+      console.log('Resumo fechamento:', res.resumo);
+    },
+    error: function(xhr) {
+      showNotification(xhr.responseJSON?.error || 'Erro ao fechar caixa.', 'danger');
+    }
+  });
 }
