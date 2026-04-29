@@ -167,10 +167,6 @@ function loadPage(page) {
             return typeof loadFornecedores === 'function' ? loadFornecedores() : $('#page-content').html('<div class="alert alert-danger">Erro ao carregar fornecedores.</div>');
         case 'vendas':
             return typeof loadVendas === 'function' ? loadVendas() : $('#page-content').html('<div class="alert alert-danger">Erro ao carregar histórico de vendas.</div>');
-        case 'fechamento-caixa':
-            return typeof showFechamentoCaixa === 'function' ? showFechamentoCaixa() : $('#page-content').html('<div class="alert alert-danger">Erro ao carregar fechamento de caixa.</div>');
-        case 'relatorios':
-            return typeof loadRelatorios === 'function' ? loadRelatorios() : $('#page-content').html('<div class="alert alert-danger">Erro ao carregar relatórios.</div>');
         case 'financeiro':
             return carregarPaginaHtml('financeiro.html', function() {
                 if (typeof initFinanceiro === 'function') {
@@ -179,6 +175,8 @@ function loadPage(page) {
                     $('#page-content').html('<div class="alert alert-danger">Erro ao carregar financeiro.</div>');
                 }
             });
+        case 'caixa':
+            return typeof loadCaixa === 'function' ? loadCaixa() : $('#page-content').html('<div class="alert alert-danger">Erro ao carregar caixa.</div>');
         case 'configuracoes':
             return typeof loadConfiguracoes === 'function' ? loadConfiguracoes() : $('#page-content').html('<div class="alert alert-danger">Erro ao carregar configurações.</div>');
         case 'fiscal':
@@ -254,136 +252,3 @@ $.ajaxSetup({
         }
     }
 });
-
-let produtoPesoSelecionado = null;
-
-// =============================
-// LER PESO DA BALANÇA
-// =============================
-async function obterPesoBalanca() {
-  try {
-    const res = await fetch('/api/balanca/peso');
-    const data = await res.json();
-
-    if (data.ok && data.peso > 0) {
-      return Number(data.peso);
-    }
-
-    return null;
-  } catch (e) {
-    console.warn('Erro ao ler balança', e);
-    return null;
-  }
-}
-
-// =============================
-// ABRIR MODAL
-// =============================
-async function abrirModalPeso(produto) {
-  produtoPesoSelecionado = produto;
-
-  document.getElementById('nomeProdutoPeso').innerText = produto.nome;
-  document.getElementById('inputPesoProduto').value = '';
-  document.getElementById('previewPeso').innerText = '';
-
-  // tenta ler automático
-  const peso = await obterPesoBalanca();
-
-  if (peso) {
-    document.getElementById('inputPesoProduto').value = peso.toFixed(3);
-    atualizarPreviewPeso();
-  }
-
-  document.getElementById('modalPeso').style.display = 'block';
-}
-
-// =============================
-// BOTÃO LER BALANÇA
-// =============================
-async function lerPesoBalancaNoModal() {
-  const peso = await obterPesoBalanca();
-
-  if (peso) {
-    document.getElementById('inputPesoProduto').value = peso.toFixed(3);
-    atualizarPreviewPeso();
-  } else {
-    alert('Balança não disponível. Digite manualmente.');
-  }
-}
-
-// =============================
-// PREVIEW
-// =============================
-function atualizarPreviewPeso() {
-  if (!produtoPesoSelecionado) return;
-
-  const peso = Number(document.getElementById('inputPesoProduto').value || 0);
-  const preco = Number(produtoPesoSelecionado.preco_venda || 0);
-
-  const total = peso * preco;
-
-  document.getElementById('previewPeso').innerText =
-    peso > 0
-      ? `Total: R$ ${total.toFixed(2)}`
-      : '';
-}
-
-// =============================
-// CONFIRMAR
-// =============================
-function confirmarPesoProduto() {
-  const peso = Number(document.getElementById('inputPesoProduto').value);
-
-  if (!peso || peso <= 0) {
-    alert('Peso inválido');
-    return;
-  }
-
-  adicionarItemCarrinho(produtoPesoSelecionado, peso, 'KG');
-
-  fecharModalPeso();
-}
-
-// =============================
-// FECHAR
-// =============================
-function fecharModalPeso() {
-  produtoPesoSelecionado = null;
-  document.getElementById('modalPeso').style.display = 'none';
-}
-
-// =============================
-// EVENTOS INPUT
-// =============================
-document.addEventListener('input', (e) => {
-  if (e.target.id === 'inputPesoProduto') {
-    atualizarPreviewPeso();
-  }
-});
-
-function adicionarProdutoAoPDV(produto) {
-
-  if (Number(produto.vendido_por_peso) === 1) {
-    abrirModalPeso(produto);
-    return;
-  }
-
-  adicionarItemCarrinho(produto, 1, 'UN');
-}
-
-function adicionarItemCarrinho(produto, quantidade, unidade) {
-
-  const subtotal = quantidade * produto.preco_venda;
-
-  carrinho.push({
-    produto_id: produto.id,
-    nome: produto.nome,
-    quantidade,
-    unidade,
-    preco_unitario: produto.preco_venda,
-    subtotal,
-    vendido_por_peso: unidade === 'KG' ? 1 : 0
-  });
-
-  atualizarCarrinho();
-}

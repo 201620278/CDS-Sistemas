@@ -46,20 +46,6 @@ const db = new sqlite3.Database(dbPath, (err) => {
 db.dbDir = dbDir;
 db.dbPath = dbPath;
 
-db.all("PRAGMA table_info(produtos)", [], (err, columns) => {
-  if (err) return console.error(err);
-
-  const colunas = columns.map(c => c.name);
-
-  if (!colunas.includes('vendido_por_peso')) {
-    db.run("ALTER TABLE produtos ADD COLUMN vendido_por_peso INTEGER DEFAULT 0");
-  }
-
-  if (!colunas.includes('unidade_venda')) {
-    db.run("ALTER TABLE produtos ADD COLUMN unidade_venda TEXT DEFAULT 'UN'");
-  }
-});
-
 function aplicarAlteracaoSegura(tabela, sql) {
   db.run(sql, (err) => {
     if (err) {
@@ -79,6 +65,16 @@ function aplicarAlteracaoSegura(tabela, sql) {
 
 function aplicarAlteracoesPosCriacao() {
   aplicarAlteracaoSegura('categorias', `ALTER TABLE categorias ADD COLUMN tipo TEXT DEFAULT 'produto'`);
+  aplicarAlteracaoSegura('caixa', `ALTER TABLE caixa ADD COLUMN status TEXT DEFAULT 'aberto'`);
+  
+  // Adicionar colunas faltantes na tabela caixa
+  aplicarAlteracaoSegura('caixa', `ALTER TABLE caixa ADD COLUMN total_sangrias DECIMAL(10,2) DEFAULT 0`);
+  aplicarAlteracaoSegura('caixa', `ALTER TABLE caixa ADD COLUMN saldo_esperado DECIMAL(10,2) DEFAULT 0`);
+  aplicarAlteracaoSegura('caixa', `ALTER TABLE caixa ADD COLUMN valor_fechamento DECIMAL(10,2) DEFAULT 0`);
+  aplicarAlteracaoSegura('caixa', `ALTER TABLE caixa ADD COLUMN diferenca DECIMAL(10,2) DEFAULT 0`);
+  aplicarAlteracaoSegura('caixa', `ALTER TABLE caixa ADD COLUMN observacao TEXT`);
+  aplicarAlteracaoSegura('caixa', `ALTER TABLE caixa ADD COLUMN aberto_em DATETIME`);
+  aplicarAlteracaoSegura('caixa', `ALTER TABLE caixa ADD COLUMN fechado_em DATETIME`);
 
   const alteracoesProdutos = [
     `ALTER TABLE produtos ADD COLUMN categoria_id INTEGER`,
@@ -92,11 +88,7 @@ function aplicarAlteracoesPosCriacao() {
     `ALTER TABLE produtos ADD COLUMN aliquota_icms REAL DEFAULT 0`,
     `ALTER TABLE produtos ADD COLUMN aliquota_pis REAL DEFAULT 0`,
     `ALTER TABLE produtos ADD COLUMN aliquota_cofins REAL DEFAULT 0`,
-    `ALTER TABLE produtos ADD COLUMN lucro_percentual DECIMAL(10,2)`,
-    `ALTER TABLE produtos ADD COLUMN vendido_por_peso INTEGER DEFAULT 0`,
-    `ALTER TABLE produtos ADD COLUMN unidade_venda TEXT DEFAULT 'UN'`,
-    `ALTER TABLE produtos ADD COLUMN peso_peca DECIMAL(10,3) DEFAULT 0`,
-    `ALTER TABLE produtos ADD COLUMN preco_kg DECIMAL(10,2) DEFAULT 0`
+    `ALTER TABLE produtos ADD COLUMN lucro_percentual DECIMAL(10,2)`
   ];
 
   const alteracoesCompras = [
@@ -143,7 +135,8 @@ function aplicarAlteracoesPosCriacao() {
   ];
 
   const alteracoesVendas = [
-    `ALTER TABLE vendas ADD COLUMN valor_recebido DECIMAL(10,2)`
+    `ALTER TABLE vendas ADD COLUMN valor_recebido DECIMAL(10,2)`,
+    `ALTER TABLE vendas ADD COLUMN status TEXT DEFAULT 'concluida'`
   ];
 
   alteracoesProdutos.forEach(sql => aplicarAlteracaoSegura('produtos', sql));
@@ -226,8 +219,6 @@ function criarTabelas() {
         estoque_atual DECIMAL(10,2) DEFAULT 0,
         estoque_minimo DECIMAL(10,2) DEFAULT 0,
         fornecedor VARCHAR(200),
-        vendido_por_peso INTEGER DEFAULT 0,
-        unidade_venda TEXT DEFAULT 'UN',
         created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
         updated_at DATETIME DEFAULT CURRENT_TIMESTAMP,
         FOREIGN KEY (categoria_id) REFERENCES categorias(id),
@@ -486,9 +477,6 @@ function inicializarBanco() {
   db.serialize(() => {
     criarTabelas();
     aplicarAlteracoesPosCriacao();
-  
-  // Adicionar campo valor_por_kg se não existir
-  aplicarAlteracaoSegura('produtos', `ALTER TABLE produtos ADD COLUMN valor_por_kg DECIMAL(10,2) NULL`);
     inserirConfiguracoesPadrao();
     criarUsuarioAdminPadrao();
     garantirCategoriasPadraoDespesa();
@@ -752,5 +740,36 @@ function seedUsuarioAdmin() {
     else console.log('Usuário administrador padrão verificado (Diego)');
   });
 }
+
+
+db.serialize(() => {
+    db.run(`
+        CREATE TABLE IF NOT EXISTS caixa (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            data DATE NOT NULL,
+            valor_inicial DECIMAL(10,2) DEFAULT 0,
+            total_sangrias DECIMAL(10,2) DEFAULT 0,
+            saldo_esperado DECIMAL(10,2) DEFAULT 0,
+            valor_fechamento DECIMAL(10,2) DEFAULT 0,
+            diferenca DECIMAL(10,2) DEFAULT 0,
+            status TEXT DEFAULT 'aberto',
+            observacao TEXT,
+            aberto_em DATETIME DEFAULT CURRENT_TIMESTAMP,
+            fechado_em DATETIME
+        )
+    `);
+
+    db.run(`
+        CREATE TABLE IF NOT EXISTS caixa_movimentacoes (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            caixa_id INTEGER NOT NULL,
+            tipo TEXT NOT NULL,
+            valor DECIMAL(10,2) DEFAULT 0,
+            motivo TEXT,
+            criado_em DATETIME DEFAULT CURRENT_TIMESTAMP,
+            FOREIGN KEY (caixa_id) REFERENCES caixa(id)
+        )
+    `);
+});
 
 module.exports = db;

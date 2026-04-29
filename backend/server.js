@@ -89,7 +89,7 @@ const configuracoesRoutes = require('./rotas/configuracoes');
 const fiscalRoutes = require('./rotas/fiscal');
 const fornecedoresRoutes = require('./rotas/fornecedores');
 const impressaoRoutes = require('./rotas/impressao');
-const contasReceberRoutes = require('./rotas/contas_receber');
+const caixaRoutes = require('./rotas/caixa');
 
 app.use('/api/produtos', verificarToken, produtosRoutes);
 app.use('/api/clientes', verificarToken, clientesRoutes);
@@ -102,7 +102,7 @@ app.use('/api/configuracoes', verificarToken, configuracoesRoutes);
 app.use('/api/fiscal', verificarToken, fiscalRoutes);
 app.use('/api/fornecedores', verificarToken, fornecedoresRoutes);
 app.use('/api/impressao', verificarToken, impressaoRoutes);
-app.use('/api/contas-receber', verificarToken, contasReceberRoutes);
+app.use('/api/caixa', verificarToken, caixaRoutes);
 
 // Rota principal (protegida)
 app.get('/', verificarToken, (req, res) => {
@@ -127,33 +127,6 @@ app.get('*.jpg', (req, res, next) => {
 app.use((err, req, res, next) => {
     console.error('Erro:', err);
     res.status(500).json({ error: 'Erro interno do servidor' });
-});
-
-// =============================
-// ROTA BALANÇA (FUTURO)
-// =============================
-app.get('/api/balanca/peso', async (req, res) => {
-  try {
-    // SIMULAÇÃO (remova depois)
-    // const peso = 0.350;
-
-    // MODO REAL (quando integrar)
-    // aqui você vai ler da balança via serial/USB
-
-    return res.json({
-      ok: false,
-      peso: null,
-      mensagem: 'Balança não conectada'
-    });
-
-  } catch (erro) {
-    console.error('Erro balança:', erro);
-
-    return res.json({
-      ok: false,
-      peso: null
-    });
-  }
 });
 
 // Iniciar servidor

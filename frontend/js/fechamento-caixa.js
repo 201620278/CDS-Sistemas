@@ -1,116 +1,111 @@
-function getToken() {
-    return localStorage.getItem('token') || sessionStorage.getItem('token') || '';
-}
-
-function moeda(valor) {
+function fcMoeda(valor) {
     return Number(valor || 0).toLocaleString('pt-BR', {
         style: 'currency',
         currency: 'BRL'
     });
 }
 
-function numero(valor) {
+function fcNumero(valor) {
     return Number(valor || 0).toLocaleString('pt-BR', {
         minimumFractionDigits: 3,
         maximumFractionDigits: 3
     });
 }
 
-function hoje() {
+function fcHoje() {
     return new Date().toISOString().split('T')[0];
 }
 
+function initFechamentoCaixa() {
+    const hoje = fcHoje();
+
+    $('#fc_data_inicio').val(hoje);
+    $('#fc_data_fim').val(hoje);
+
+    carregarFechamentoCaixa();
+}
+
 async function carregarFechamentoCaixa() {
-    const dataInicio = document.getElementById('data_inicio').value || hoje();
-    const dataFim = document.getElementById('data_fim').value || dataInicio;
+    const dataInicio = $('#fc_data_inicio').val() || fcHoje();
+    const dataFim = $('#fc_data_fim').val() || dataInicio;
 
-    document.getElementById('data_inicio').value = dataInicio;
-    document.getElementById('data_fim').value = dataFim;
-
-    const token = getToken();
-
-    const resCaixa = await fetch(`/api/vendas/relatorio/fechamento-caixa?data_inicio=${dataInicio}&data_fim=${dataFim}`, {
-        headers: {
-            'Authorization': `Bearer ${token}` 
-        }
-    });
-
-    const caixa = await resCaixa.json();
-
-    if (!resCaixa.ok) {
-        alert(caixa.error || 'Erro ao carregar fechamento de caixa');
-        return;
-    }
-
-    document.getElementById('total_vendido').textContent = moeda(caixa.resumo.total_vendido);
-    document.getElementById('quantidade_vendas').textContent = caixa.resumo.quantidade_vendas || 0;
-    document.getElementById('total_descontos').textContent = moeda(caixa.resumo.total_descontos);
-    document.getElementById('ticket_medio').textContent = moeda(caixa.resumo.ticket_medio);
-
-    const tabelaPagamentos = document.getElementById('tabela_pagamentos');
-    tabelaPagamentos.innerHTML = '';
-
-    if (!caixa.pagamentos || caixa.pagamentos.length === 0) {
-        tabelaPagamentos.innerHTML = `
-            <tr>
-                <td colspan="3">Nenhuma venda encontrada.</td>
-            </tr>
-        `;
-    } else {
-        caixa.pagamentos.forEach(item => {
-            tabelaPagamentos.innerHTML += `
-                <tr>
-                    <td>${item.forma_pagamento || '-'}</td>
-                    <td>${item.quantidade || 0}</td>
-                    <td>${moeda(item.total)}</td>
-                </tr>
-            `;
+    try {
+        const caixa = await $.get(`${API_URL}/vendas/relatorio/fechamento-caixa`, {
+            data_inicio: dataInicio,
+            data_fim: dataFim
         });
-    }
 
-    await carregarProdutosMaisVendidos(dataInicio, dataFim);
+        $('#fc_total_vendido').text(fcMoeda(caixa.resumo.total_vendido));
+        $('#fc_quantidade_vendas').text(caixa.resumo.quantidade_vendas || 0);
+        $('#fc_total_descontos').text(fcMoeda(caixa.resumo.total_descontos));
+        $('#fc_ticket_medio').text(fcMoeda(caixa.resumo.ticket_medio));
+
+        renderPagamentosFechamento(caixa.pagamentos || []);
+
+        const produtos = await $.get(`${API_URL}/vendas/relatorio/produtos-mais-vendidos`, {
+            data_inicio: dataInicio,
+            data_fim: dataFim
+        });
+
+        renderProdutosMaisVendidos(produtos || []);
+
+    } catch (error) {
+        console.error(error);
+        showNotification('Erro ao carregar fechamento de caixa', 'danger');
+    }
 }
 
-async function carregarProdutosMaisVendidos(dataInicio, dataFim) {
-    const token = getToken();
+function renderPagamentosFechamento(lista) {
+    const tbody = $('#fc_tabela_pagamentos');
+    tbody.empty();
 
-    const resProdutos = await fetch(`/api/vendas/relatorio/produtos-mais-vendidos?data_inicio=${dataInicio}&data_fim=${dataFim}&limite=30`, {
-        headers: {
-            'Authorization': `Bearer ${token}` 
-        }
-    });
-
-    const produtos = await resProdutos.json();
-
-    if (!resProdutos.ok) {
-        alert(produtos.error || 'Erro ao carregar produtos mais vendidos');
-        return;
-    }
-
-    const tabelaProdutos = document.getElementById('tabela_produtos');
-    tabelaProdutos.innerHTML = '';
-
-    if (!produtos || produtos.length === 0) {
-        tabelaProdutos.innerHTML = `
+    if (!lista.length) {
+        tbody.html(`
             <tr>
-                <td colspan="6">Nenhum produto vendido no período.</td>
+                <td colspan="3" class="text-center text-muted">
+                    Nenhuma venda encontrada no período.
+                </td>
             </tr>
-        `;
+        `);
         return;
     }
 
-    produtos.forEach(produto => {
-        tabelaProdutos.innerHTML += `
+    lista.forEach(item => {
+        tbody.append(`
             <tr>
-                <td>${produto.produto_codigo || '-'}</td>
-                <td>${produto.produto_nome || '-'}</td>
+                <td>${item.forma_pagamento || '-'}</td>
+                <td>${item.quantidade || 0}</td>
+                <td>${fcMoeda(item.total)}</td>
+            </tr>
+        `);
+    });
+}
+
+function renderProdutosMaisVendidos(lista) {
+    const tbody = $('#fc_tabela_produtos');
+    tbody.empty();
+
+    if (!lista.length) {
+        tbody.html(`
+            <tr>
+                <td colspan="6" class="text-center text-muted">
+                    Nenhum produto vendido no período.
+                </td>
+            </tr>
+        `);
+        return;
+    }
+
+    lista.forEach(produto => {
+        tbody.append(`
+            <tr>
+                <td>${produto.codigo || '-'}</td>
+                <td>${produto.nome || '-'}</td>
                 <td>${produto.unidade || '-'}</td>
-                <td>${numero(produto.quantidade_vendida)}</td>
-                <td>${moeda(produto.total_vendido)}</td>
-                <td>${moeda(produto.preco_medio)}</td>
+                <td>${fcNumero(produto.quantidade_vendida)}</td>
+                <td>${fcMoeda(produto.total_vendido)}</td>
+                <td>${fcMoeda(produto.preco_medio)}</td>
             </tr>
-        `;
+        `);
     });
 }
-
-document.addEventListener('DOMContentLoaded', carregarFechamentoCaixa);

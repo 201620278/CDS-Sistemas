@@ -3,14 +3,6 @@ const express = require('express');
 const router = express.Router();
 const db = require('../database');
 
-// Função para calcular valor por KG
-const calcularValorKg = (preco, unidade, vendido_por_peso) => {
-  if (vendido_por_peso === 1 && preco && unidade === 'kg') {
-    return parseFloat(preco);
-  }
-  return null;
-};
-
 // LISTAR PRODUTOS
 router.get('/', (req, res) => {
   db.all(`
@@ -180,11 +172,8 @@ router.post('/', (req, res) => {
     codigo, nome, categoria_id, subcategoria_id, unidade, preco_compra,
     lucro_percentual, preco_venda, estoque_atual, estoque_minimo, fornecedor,
     ncm, cfop, csosn, origem, cest, codigo_barras,
-    aliquota_icms, aliquota_pis, aliquota_cofins, vendido_por_peso, unidade_venda
+    aliquota_icms, aliquota_pis, aliquota_cofins
   } = req.body;
-
-  // Calcular valor por KG
-  const valor_por_kg = calcularValorKg(preco_compra, unidade, vendido_por_peso);
 
   db.run(`
     INSERT INTO produtos (
@@ -192,15 +181,15 @@ router.post('/', (req, res) => {
       preco_compra, lucro_percentual, preco_venda,
       estoque_atual, estoque_minimo, fornecedor,
       ncm, cfop, csosn, origem, cest, codigo_barras,
-      aliquota_icms, aliquota_pis, aliquota_cofins, vendido_por_peso, unidade_venda, valor_por_kg
+      aliquota_icms, aliquota_pis, aliquota_cofins
     )
-    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
   `, [
     codigo, nome, categoria_id, subcategoria_id, unidade,
     preco_compra, lucro_percentual, preco_venda,
     estoque_atual || 0, estoque_minimo || 0, fornecedor,
     ncm, cfop, csosn, origem, cest, codigo_barras,
-    aliquota_icms, aliquota_pis, aliquota_cofins, vendido_por_peso || 0, unidade_venda || 'UN', valor_por_kg
+    aliquota_icms, aliquota_pis, aliquota_cofins
   ],
     function(err) {
       if (err) {
@@ -236,15 +225,6 @@ router.post('/', (req, res) => {
 router.put('/:id', (req, res) => {
   const { id } = req.params;
   const updates = req.body;
-
-  // Calcular valor por KG se for atualização de campos relevantes
-  if (updates.preco_compra !== undefined || updates.unidade !== undefined || updates.vendido_por_peso !== undefined) {
-    const preco_compra = updates.preco_compra !== undefined ? updates.preco_compra : (req.body.preco_compra || 0);
-    const unidade = updates.unidade !== undefined ? updates.unidade : (req.body.unidade || '');
-    const vendido_por_peso = updates.vendido_por_peso !== undefined ? updates.vendido_por_peso : (req.body.vendido_por_peso || 0);
-    
-    updates.valor_por_kg = calcularValorKg(preco_compra, unidade, vendido_por_peso);
-  }
 
   db.get('SELECT * FROM produtos WHERE id = ?', [id], (err, old) => {
     if (err) {

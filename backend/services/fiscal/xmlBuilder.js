@@ -170,7 +170,7 @@ function buildNfceXml({ config, venda, itens, numero }) {
     const cfop = item.cfop || '5102';
     const cest = onlyDigits(item.cest || item.produto_cest || '');
     const cEAN = onlyDigits(item.codigo_barras || item.produto_codigo_barras || '');
-    const unidade = item.unidade || (item.vendido_por_peso ? 'KG' : 'UN');
+    const unidade = item.unidade || 'UN';
     const xProd = Number(config.ambiente) === 2 && idx === 0
       ? descricaoHomologacao
       : item.produto_nome || 'PRODUTO';
@@ -185,13 +185,13 @@ function buildNfceXml({ config, venda, itens, numero }) {
           ${cest ? `<CEST>${cest}</CEST>` : ''}
           <CFOP>${cfop}</CFOP>
           <uCom>${xmlEscape(unidade)}</uCom>
-          <qCom>${quantidade.toFixed(4)}</qCom>
-          <vUnCom>${valorUnitario.toFixed(10)}</vUnCom>
-          <vProd>${subtotal.toFixed(2)}</vProd>
+          <qCom>${formatNumber(quantidade, 4)}</qCom>
+          <vUnCom>${formatNumber(valorUnitario, 10)}</vUnCom>
+          <vProd>${formatNumber(subtotal, 2)}</vProd>
           <cEANTrib>${xmlEscape(cEAN || 'SEM GTIN')}</cEANTrib>
           <uTrib>${xmlEscape(unidade)}</uTrib>
-          <qTrib>${quantidade.toFixed(4)}</qTrib>
-          <vUnTrib>${valorUnitario.toFixed(10)}</vUnTrib>
+          <qTrib>${formatNumber(quantidade, 4)}</qTrib>
+          <vUnTrib>${formatNumber(valorUnitario, 10)}</vUnTrib>
           <indTot>1</indTot>
         </prod>
         <imposto>
