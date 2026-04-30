@@ -1,6 +1,29 @@
 const express = require('express');
 const router = express.Router();
 const db = require('../database');
+
+// BLOQUEIO DEFINITIVO: não permite venda com caixa fechado
+function bloquearVendaSemCaixaAberto(req, res, next) {
+  db.get(`
+    SELECT id
+    FROM caixa
+    WHERE status = 'aberto'
+    ORDER BY id DESC
+    LIMIT 1
+  `, [], (err, caixa) => {
+    if (err) {
+      return res.status(500).json({ error: err.message });
+    }
+
+    if (!caixa) {
+      return res.status(400).json({
+        error: 'Caixa fechado. Abra o caixa antes de realizar uma venda.'
+      });
+    }
+
+    next();
+  });
+}
 const { emitirPorVendaId } = require('../services/fiscal/emissor');
 const moment = require('moment');
 
@@ -103,7 +126,7 @@ router.get('/:id', (req, res) => {
 // Criar nova venda
 
 // NOVA LÓGICA: Suporte a venda a prazo
-router.post('/', (req, res) => {
+router.post('/', bloquearVendaSemCaixaAberto, (req, res) => {
   console.log('ENTROU NA ROTA DE EMISSAO NFC-E');
   console.log('DADOS RECEBIDOS PARA EMISSAO:', req.body);
 
