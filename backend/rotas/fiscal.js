@@ -107,6 +107,34 @@ router.post('/emitir/venda/:vendaId', async (req, res) => {
   }
 });
 
+router.get('/danfe/venda/:vendaId', (req, res) => {
+  const vendaId = Number(req.params.vendaId);
+
+  db.get(`
+    SELECT n.danfe_html, n.chave_acesso, n.protocolo, n.status, n.numero, n.serie
+    FROM nfce_notas n
+    WHERE n.venda_id = ?
+    ORDER BY n.id DESC
+    LIMIT 1
+  `, [vendaId], (err, nota) => {
+    if (err) {
+      console.error('Erro ao buscar DANFE:', err);
+      return res.status(500).send('Erro interno ao buscar DANFE.');
+    }
+
+    if (!nota) {
+      return res.status(404).send('NFC-e não encontrada para esta venda.');
+    }
+
+    if (!nota.danfe_html) {
+      return res.status(404).send('DANFE não gerado para esta NFC-e.');
+    }
+
+    res.setHeader('Content-Type', 'text/html; charset=utf-8');
+    res.send(nota.danfe_html);
+  });
+});
+
 router.get('/notas', (req, res) => {
   db.all(`
     SELECT n.*, v.codigo as venda_codigo, v.total as venda_total

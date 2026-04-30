@@ -1,6 +1,6 @@
 const QRCode = require('qrcode');
 
-async function gerarDanfeHtml({ venda, itens, empresa, chave, numero, serie, qrCodeUrl }) {
+async function gerarDanfeHtml({ venda, itens, empresa, chave, numero, serie, qrCodeUrl, tributos }) {
   const qrCodeDataUrl = qrCodeUrl ? await QRCode.toDataURL(qrCodeUrl) : '';
 
   const itensHtml = (itens || []).map((item) => `
@@ -11,6 +11,13 @@ async function gerarDanfeHtml({ venda, itens, empresa, chave, numero, serie, qrC
       <td style="text-align:right;">${Number(item.subtotal || 0).toFixed(2)}</td>
     </tr>
   `).join('');
+
+  const tributosHtml = tributos ? `
+    <p style="font-size: 10px;">Tributos Totais Incidentes (Lei Federal 12.741/2012):</p>
+    <p style="font-size: 10px;">ICMS: R$ ${Number(tributos.vICMS || 0).toFixed(2)}</p>
+    <p style="font-size: 10px;">PIS: R$ ${Number(tributos.vPIS || 0).toFixed(2)}</p>
+    <p style="font-size: 10px;">COFINS: R$ ${Number(tributos.vCOFINS || 0).toFixed(2)}</p>
+  ` : '';
 
   return `<!DOCTYPE html>
 <html>
@@ -46,6 +53,8 @@ async function gerarDanfeHtml({ venda, itens, empresa, chave, numero, serie, qrC
   <p>Total: R$ ${Number(venda.total || 0).toFixed(2)}</p>
   <p>Desconto: R$ ${Number(venda.desconto || 0).toFixed(2)}</p>
   <p>Forma pag.: ${venda.forma_pagamento || ''}</p>
+  <div class="sep"></div>
+  ${tributosHtml}
   <div class="sep"></div>
   <p>Consulte pela chave de acesso:</p>
   <p>${chave}</p>

@@ -522,8 +522,8 @@ function inserirConfiguracoesPadrao() {
     ['fiscal_ws_autorizacao_homologacao', 'https://nfce-homologacao.svrs.rs.gov.br/ws/NfeAutorizacao/NFeAutorizacao4.asmx', 'string', 'WS autorização homologação'],
     ['fiscal_ws_retorno_homologacao', 'https://nfce-homologacao.svrs.rs.gov.br/ws/NFeRetAutorizacao/NFeRetAutorizacao4.asmx', 'string', 'WS retorno homologação'],
     ['fiscal_ws_status_homologacao', 'https://nfce-homologacao.svrs.rs.gov.br/ws/NfeStatusServico/NFeStatusServico4.asmx', 'string', 'WS status homologação'],
-    ['fiscal_csc_qrcode_url_homologacao', 'http://nfceh.sefaz.ce.gov.br/pages/consultaNota.jsf', 'string', 'Base QR Code homologação CE']
-    ['fiscal_consulta_chave_url_homologacao', 'http://nfceh.sefaz.ce.gov.br/pages/consultaNota.jsf', 'string', 'Consulta chave homologação CE'],
+    ['fiscal_csc_qrcode_url_homologacao', 'http://nfceh.sefaz.ce.gov.br/pages/ShowNFCe.html', 'string', 'Base QR Code homologação CE']
+    ['fiscal_consulta_chave_url_homologacao', 'http://nfceh.sefaz.ce.gov.br/pages/ShowNFCe.html', 'string', 'Consulta chave homologação CE'],
     ['fiscal_tp_imp', '4', 'number', 'Tipo impressão DANFE NFC-e'],
     ['fiscal_municipio_codigo', '2307304', 'string', 'Código município emitente'],
     ['fiscal_municipio_nome', 'Juazeiro do Norte', 'string', 'Nome município emitente'],

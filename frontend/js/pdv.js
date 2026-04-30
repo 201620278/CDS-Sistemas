@@ -727,8 +727,8 @@ function abrirModalDecisaoFiscal(skipPagamento = false) {
                             <button
                                 type="button"
                                 class="btn btn-secondary btn-fiscal-bloqueado"
-                                onclick="mostrarFiscalEmDesenvolvimento()"
-                                title="Módulo fiscal em desenvolvimento"
+                                onclick="finalizarComFiscal()"
+                                title="Emitir NFC-e"
                             >
                                 Sim, emitir NFC-e
                             </button>
@@ -756,9 +756,24 @@ function abrirModalDecisaoFiscal(skipPagamento = false) {
     modal.show();
 }
 
-function mostrarFiscalEmDesenvolvimento() {
-    showNotification('Em desenvolvimento', 'warning');
+function finalizarComFiscal() {
+    const modalEl = document.getElementById('decisaoFiscalModal');
+
+    if (document.activeElement) {
+        document.activeElement.blur();
+    }
+
+    const instancia = bootstrap.Modal.getInstance(modalEl);
+
+    if (instancia) {
+        instancia.hide();
+    }
+
+    setTimeout(() => {
+        executarFinalizacaoVenda(true);
+    }, 300);
 }
+
 
 function finalizarSemFiscal() {
     const modalEl = document.getElementById('decisaoFiscalModal');
@@ -768,7 +783,7 @@ function finalizarSemFiscal() {
         instancia.hide();
     }
 
-    executarFinalizacaoVenda();
+    executarFinalizacaoVenda(false);
 }
 
 function mostrarModalAvisoDebitoCliente(aviso, totalEmAberto, parcelasVencidas, onConfirm) {
@@ -813,7 +828,7 @@ function mostrarModalAvisoDebitoCliente(aviso, totalEmAberto, parcelasVencidas, 
     });
 }
 
-function executarFinalizacaoVenda() {
+function executarFinalizacaoVenda(emitirFiscal = false) {
     if (vendaEmProcessamento) {
         showNotification('A venda já está sendo processada.', 'warning');
         return;
@@ -852,7 +867,7 @@ function executarFinalizacaoVenda() {
         forma_pagamento: formaPagamento,
         desconto,
         total,
-        emitir_fiscal: false,
+        emitir_fiscal: emitirFiscal,
         itens: carrinho.map(item => ({
             produto_id: Number(item.id),
             quantidade: Number(item.quantidade),
@@ -894,16 +909,28 @@ function executarFinalizacaoVenda() {
             success: function(response) {
                 vendaEmProcessamento = false;
 
-                const vendaId = response.id || response.venda_id;
+                const vendaId = response.venda_id || response.id || response.vendaId || response.venda?.id;
+
                 if (!vendaId) {
-                    showNotification('Venda salva, mas o servidor não retornou o ID.', 'warning');
+                    console.error('Resposta da venda sem ID:', response);
+                    showNotification('Venda finalizada, mas não foi possível localizar o ID da venda.', 'danger');
                     return;
                 }
 
-                imprimirCupomNaoFiscal(vendaId, {
-                    ...payload,
-                    itens: itensParaCupom
-                }, total, desconto);
+                if (emitirFiscal) {
+                    showNotification('Venda finalizada. Emitindo NFC-e...', 'info');
+
+                    mostrarModalProcessandoNFCe(vendaId);
+
+                    setTimeout(() => {
+                        emitirNFCeVenda(vendaId);
+                    }, 300);
+                } else {
+                    imprimirCupomNaoFiscal(vendaId, {
+                        ...payload,
+                        itens: itensParaCupom
+                    }, total, desconto);
+                }
 
                 finalizarPosVenda();
                 showNotification('Venda finalizada com sucesso.', 'success');
@@ -984,6 +1011,247 @@ function cancelarVendaAtual() {
     atualizarCarrinho();
     focarCampoCodigo();
     showNotification('Venda cancelada.', 'info');
+}
+
+function emitirNFCeVenda(vendaId) {
+    if (!vendaId) {
+        console.error('emitirNFCeVenda chamado sem vendaId');
+        limparModaisTravados();
+        showNotification('Erro: ID da venda não encontrado para emitir NFC-e.', 'danger');
+        return;
+    }
+
+    $.ajax({
+        url: `${API_URL}/fiscal/emitir/venda/${vendaId}`,
+        method: 'POST',
+        timeout: 60000,
+
+        success: function(response) {
+            console.log('Retorno NFC-e:', response);
+
+            const modalProcessando = document.getElementById('processandoNFCeModal');
+            if (modalProcessando) {
+                const instancia = bootstrap.Modal.getInstance(modalProcessando);
+                if (instancia) instancia.hide();
+            }
+
+            setTimeout(() => {
+                limparModaisTravados();
+                showNotification('NFC-e autorizada pela SEFAZ!', 'success');
+                mostrarModalImpressaoFiscal(vendaId, response);
+            }, 300);
+        },
+
+        error: function(xhr) {
+            console.error('Erro ao emitir NFC-e:', xhr);
+
+            const modalProcessando = document.getElementById('processandoNFCeModal');
+            if (modalProcessando) {
+                const instancia = bootstrap.Modal.getInstance(modalProcessando);
+                if (instancia) instancia.hide();
+            }
+
+            setTimeout(() => {
+                limparModaisTravados();
+
+                const mensagem =
+                    xhr.responseJSON?.erro ||
+                    xhr.responseJSON?.error ||
+                    xhr.responseJSON?.message ||
+                    xhr.responseText ||
+                    'NFC-e não autorizada pela SEFAZ.';
+
+                showNotification(mensagem, 'danger');
+                mostrarModalErroNFCe(vendaId, mensagem);
+            }, 300);
+        }
+    });
+}
+
+function mostrarModalErroNFCe(vendaId, mensagem) {
+    $('#modal-container').html(`
+        <div class="modal fade" id="erroNFCeModal" tabindex="-1">
+            <div class="modal-dialog modal-dialog-centered">
+                <div class="modal-content border-0 shadow">
+                    <div class="modal-header bg-danger text-white">
+                        <h5 class="modal-title">
+                            <i class="fas fa-triangle-exclamation me-2"></i>
+                            NFC-e não autorizada
+                        </h5>
+                        <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal"></button>
+                    </div>
+
+                    <div class="modal-body text-center">
+                        <p>
+                            A venda <strong>#${vendaId}</strong> foi finalizada, mas a NFC-e não foi autorizada.
+                        </p>
+
+                        <div class="alert alert-danger text-start">
+                            ${escapeHtml(mensagem)}
+                        </div>
+
+                        <div class="d-grid gap-2">
+                            <button class="btn btn-warning" onclick="emitirNFCeVenda(${vendaId})">
+                                <i class="fas fa-rotate-right me-2"></i>
+                                Tentar emitir novamente
+                            </button>
+
+                            <button class="btn btn-outline-secondary" onclick="fecharModalErroNFCe()">
+                                Fechar
+                            </button>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    `);
+
+    const modalEl = document.getElementById('erroNFCeModal');
+    const modal = new bootstrap.Modal(modalEl);
+    modal.show();
+}
+
+function mostrarModalImpressaoFiscal(vendaId, fiscalResponse = {}) {
+    const chaveAcesso =
+        fiscalResponse.chave_acesso ||
+        fiscalResponse.chaveAcesso ||
+        fiscalResponse.chave ||
+        '';
+
+    const protocolo =
+        fiscalResponse.protocolo ||
+        fiscalResponse.nProt ||
+        fiscalResponse.numero_protocolo ||
+        '';
+
+    $('#modal-container').html(`
+        <div class="modal fade" id="impressaoFiscalModal" tabindex="-1">
+            <div class="modal-dialog modal-dialog-centered">
+                <div class="modal-content border-0 shadow">
+                    <div class="modal-header bg-success text-white">
+                        <h5 class="modal-title">
+                            <i class="fas fa-check-circle me-2"></i>
+                            NFC-e Emitida
+                        </h5>
+                        <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal"></button>
+                    </div>
+
+                    <div class="modal-body text-center">
+                        <p class="mb-2">
+                            A NFC-e da venda <strong>#${vendaId}</strong> foi enviada para a SEFAZ.
+                        </p>
+
+                        ${chaveAcesso ? `
+                            <p class="small mb-1">
+                                <strong>Chave:</strong><br>
+                                ${escapeHtml(chaveAcesso)}
+                            </p>
+                        ` : ''}
+
+                        ${protocolo ? `
+                            <p class="small mb-3">
+                                <strong>Protocolo:</strong><br>
+                                ${escapeHtml(protocolo)}
+                            </p>
+                        ` : ''}
+
+                        <div class="d-grid gap-2">
+                            <button class="btn btn-success btn-lg" onclick="imprimirDANFEFiscal(${vendaId})">
+                                <i class="fas fa-print me-2"></i>
+                                Imprimir Cupom Fiscal
+                            </button>
+
+                            <button class="btn btn-outline-secondary" data-bs-dismiss="modal">
+                                Fechar
+                            </button>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    `);
+
+    const modalEl = document.getElementById('impressaoFiscalModal');
+    const modal = new bootstrap.Modal(modalEl);
+    modal.show();
+}
+
+async function mostrarModalProcessandoNFCe(vendaId) {
+    $('#modal-container').html(`
+        <div class="modal fade" id="processandoNFCeModal" tabindex="-1" data-bs-backdrop="static" data-bs-keyboard="false">
+            <div class="modal-dialog modal-dialog-centered">
+                <div class="modal-content border-0 shadow">
+                    <div class="modal-header bg-primary text-white">
+                        <h5 class="modal-title">
+                            <i class="fas fa-file-invoice me-2"></i>
+                            Emitindo NFC-e
+                        </h5>
+                    </div>
+
+                    <div class="modal-body text-center">
+                        <div class="spinner-border text-primary mb-3" role="status"></div>
+
+                        <p class="mb-1">
+                            Venda <strong>#${vendaId}</strong> finalizada.
+                        </p>
+
+                        <p class="text-muted mb-0">
+                            Enviando NFC-e para autorização da SEFAZ...
+                        </p>
+                    </div>
+                </div>
+            </div>
+        </div>
+    `);
+
+    const modalEl = document.getElementById('processandoNFCeModal');
+    const modal = new bootstrap.Modal(modalEl);
+    modal.show();
+}
+
+async function imprimirDANFEFiscal(vendaId) {
+    try {
+        const token = localStorage.getItem('token');
+
+        const resposta = await fetch(`${API_URL}/fiscal/danfe/venda/${vendaId}`, {
+            method: 'GET',
+            headers: {
+                'Authorization': `Bearer ${token}` 
+            }
+        });
+
+        const texto = await resposta.text();
+
+        if (!resposta.ok) {
+            console.error('Erro ao buscar DANFE:', {
+                status: resposta.status,
+                resposta: texto
+            });
+
+            showNotification(`Erro ao abrir DANFE fiscal: ${texto}`, 'danger');
+            return;
+        }
+
+        const janela = window.open('', '_blank', 'width=420,height=720');
+
+        if (!janela) {
+            showNotification('Permita pop-ups para imprimir o cupom fiscal.', 'warning');
+            return;
+        }
+
+        janela.document.open();
+        janela.document.write(texto);
+        janela.document.close();
+
+        setTimeout(() => {
+            janela.focus();
+            janela.print();
+        }, 500);
+
+    } catch (error) {
+        console.error('Erro ao imprimir DANFE:', error);
+        showNotification('Erro ao imprimir DANFE NFC-e.', 'danger');
+    }
 }
 
 function imprimirCupomNaoFiscal(vendaId, venda, total, desconto) {
@@ -1094,5 +1362,23 @@ function imprimirCupomNaoFiscal(vendaId, venda, total, desconto) {
     });
 }
 
+function limparModaisTravados() {
+    document.querySelectorAll('.modal-backdrop').forEach(backdrop => backdrop.remove());
+    document.body.classList.remove('modal-open');
+    document.body.style.removeProperty('overflow');
+    document.body.style.removeProperty('padding-right');
+}
 
+function fecharModalErroNFCe() {
+    const modalEl = document.getElementById('erroNFCeModal');
+
+    if (modalEl) {
+        const instancia = bootstrap.Modal.getInstance(modalEl);
+        if (instancia) instancia.hide();
+    }
+
+    setTimeout(() => {
+        limparModaisTravados();
+    }, 300);
+}
 

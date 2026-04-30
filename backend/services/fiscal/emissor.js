@@ -205,17 +205,12 @@ async function emitirPorVendaId(vendaId) {
     qrCodeUrl = gerarQrCodeUrl({
       consultaUrl: config.urls.consultaQr,
       chave: xmlBase.chave,
-      tpAmb: config.ambiente,
-      idCSC: config.idCSC,
-      tokenCSC: config.tokenCSC,
-      dhEmi: xmlBase.dhEmi,
-      vNF: xmlBase.valores.vNF,
-      digestValue: assinatura.digestValue
+      tpAmb: config.ambiente
     });
 
     const infNFeSupl = montarInfNFeSupl({
       qrCodeUrl,
-      urlChave: config.urls.consultaQr
+      urlChave: config.urls.consultaChave || config.urls.consultaQr
     });
 
     xmlAssinadoFinal = anexarInfNFeSupl(assinatura.xmlAssinado, infNFeSupl);
@@ -259,7 +254,8 @@ async function emitirPorVendaId(vendaId) {
     chave: xmlBase.chave,
     numero,
     serie: config.serie,
-    qrCodeUrl
+    qrCodeUrl,
+    tributos: xmlBase.valores
   });
 
   let status = assinaturaErro ? 'configuracao_pendente' : 'pendente';

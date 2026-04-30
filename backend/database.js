@@ -187,6 +187,7 @@ function criarTabelas() {
         nome VARCHAR(200) NOT NULL,
         razao_social VARCHAR(200),
         cpf_cnpj VARCHAR(20) UNIQUE,
+        inscricao_estadual VARCHAR(20),
         telefone VARCHAR(20),
         email VARCHAR(100),
         contato VARCHAR(100),
@@ -202,6 +203,19 @@ function criarTabelas() {
     `, (err) => {
       if (err) console.error('Erro ao criar tabela fornecedores:', err);
       else console.log('Tabela fornecedores criada/verificada');
+      
+      // Adicionar coluna inscricao_estadual se não existir (para tabelas existentes)
+      if (!err) {
+        db.run(`
+          ALTER TABLE fornecedores ADD COLUMN inscricao_estadual VARCHAR(20)
+        `, (alterErr) => {
+          if (alterErr && !alterErr.message.includes('duplicate column name')) {
+            console.error('Erro ao adicionar coluna inscricao_estadual:', alterErr);
+          } else if (!alterErr) {
+            console.log('Coluna inscricao_estadual adicionada/verificada na tabela fornecedores');
+          }
+        });
+      }
     });
 
     // Tabela de produtos
@@ -696,8 +710,8 @@ function inserirConfiguracoesPadrao() {
     ['fiscal_ws_autorizacao_homologacao', 'https://nfce-homologacao.svrs.rs.gov.br/ws/NfeAutorizacao/NFeAutorizacao4.asmx', 'string', 'WS autorização homologação'],
     ['fiscal_ws_retorno_homologacao', 'https://nfce-homologacao.svrs.rs.gov.br/ws/NFeRetAutorizacao/NFeRetAutorizacao4.asmx', 'string', 'WS retorno homologação'],
     ['fiscal_ws_status_homologacao', 'https://nfce-homologacao.svrs.rs.gov.br/ws/NfeStatusServico/NFeStatusServico4.asmx', 'string', 'WS status homologação'],
-    ['fiscal_csc_qrcode_url_homologacao', 'http://nfceh.sefaz.ce.gov.br/pages/consultaNota.jsf', 'string', 'Base QR Code homologação CE'],
-    ['fiscal_consulta_chave_url_homologacao', 'http://nfceh.sefaz.ce.gov.br/pages/consultaNota.jsf', 'string', 'Consulta chave homologação CE'],
+    ['fiscal_csc_qrcode_url_homologacao', 'https://nfceh.sefaz.ce.gov.br/pages/ShowNFCe.html', 'string', 'Base QR Code homologação CE'],
+    ['fiscal_consulta_chave_url_homologacao', 'https://nfceh.sefaz.ce.gov.br/pages/ShowNFCe.html', 'string', 'Consulta chave homologação CE'],
     ['fiscal_tp_imp', '4', 'number', 'Tipo impressão DANFE NFC-e'],
     ['fiscal_municipio_codigo', '2307304', 'string', 'Código município emitente'],
     ['fiscal_municipio_nome', 'Juazeiro do Norte', 'string', 'Nome município emitente'],

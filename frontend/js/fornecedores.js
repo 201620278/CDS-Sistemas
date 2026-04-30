@@ -36,12 +36,13 @@ function loadFornecedores() {
                   <th>Telefone</th>
                   <th>Cidade</th>
                   <th>CPF/CNPJ</th>
+                  <th>Inscrição Estadual</th>
                   <th>Ações</th>
                 </tr>
               </thead>
               <tbody id="tabelaFornecedoresBody">
                 <tr>
-                  <td colspan="7" class="text-center">Carregando...</td>
+                  <td colspan="8" class="text-center">Carregando...</td>
                 </tr>
               </tbody>
             </table>
@@ -81,6 +82,10 @@ function exibirFormularioFornecedor(fornecedor = null) {
           <div class="form-group">
             <label>CPF/CNPJ</label>
             <input type="text" id="cpfCnpjFornecedor" class="form-control" placeholder="CPF ou CNPJ" value="${f.cpf_cnpj || ''}">
+          </div>
+          <div class="form-group">
+            <label>Inscrição Estadual</label>
+            <input type="text" id="inscricaoEstadualFornecedor" class="form-control" placeholder="Inscrição Estadual" value="${f.inscricao_estadual || ''}">
           </div>
           <div class="form-group">
             <label>Telefone</label>
@@ -187,7 +192,7 @@ async function carregarListaFornecedores() {
     console.error('Erro ao carregar fornecedores:', error);
     tbody.html(`
       <tr>
-        <td colspan="7" class="text-center text-danger">Erro ao carregar fornecedores.</td>
+        <td colspan="8" class="text-center text-danger">Erro ao carregar fornecedores.</td>
       </tr>
     `);
   }
@@ -199,7 +204,7 @@ function renderFornecedores(lista) {
   if (!lista || lista.length === 0) {
     tbody.html(`
       <tr>
-        <td colspan="7" class="text-center">Nenhum fornecedor cadastrado.</td>
+        <td colspan="8" class="text-center">Nenhum fornecedor cadastrado.</td>
       </tr>
     `);
     return;
@@ -213,6 +218,7 @@ function renderFornecedores(lista) {
       <td>${escapeHtml(fornecedor.telefone || '-')}</td>
       <td>${escapeHtml(fornecedor.cidade || '-')}</td>
       <td>${escapeHtml(fornecedor.cpf_cnpj || '-')}</td>
+      <td>${escapeHtml(fornecedor.inscricao_estadual || '-')}</td>
       <td>
         <div class="acoes-tabela">
           <button class="btn btn-sm btn-warning" onclick="editFornecedor(${fornecedor.id})">Editar</button>
@@ -232,6 +238,7 @@ async function saveFornecedor() {
     nome: $('#nomeFornecedor').val().trim(),
     razao_social: $('#razaoSocialFornecedor').val().trim(),
     cpf_cnpj: $('#cpfCnpjFornecedor').val().trim(),
+    inscricao_estadual: $('#inscricaoEstadualFornecedor').val().trim(),
     telefone: $('#telefoneFornecedor').val().trim(),
     email: $('#emailFornecedor').val().trim(),
     contato: $('#contatoFornecedor').val().trim(),

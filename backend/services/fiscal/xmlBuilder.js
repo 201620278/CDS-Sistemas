@@ -52,33 +52,22 @@ function mapearFormaPagamento(forma) {
 function gerarQrCodeUrl({
   consultaUrl,
   chave,
-  versaoQrCode = '2',
-  tpAmb,
-  idCSC,
-  tokenCSC,
-  dhEmi,
-  vNF,
-  digestValue
+  versaoQrCode = '3',
+  tpAmb
 }) {
-  if (!consultaUrl || !idCSC || !tokenCSC || !digestValue) {
+  if (!consultaUrl) {
     return '';
   }
 
-  const params = [
-    `chNFe=${chave}`,
-    `nVersao=${versaoQrCode}`,
-    `tpAmb=${tpAmb}`,
-    `cDest=`,
-    `dhEmi=${encodeURIComponent(dhEmi)}`,
-    `vNF=${formatNumber(vNF, 2)}`,
-    `vICMS=0.00`,
-    `digVal=${encodeURIComponent(digestValue)}`,
-    `cIdToken=${idCSC}`
-  ].join('&');
+  const dados = [
+    chave,
+    versaoQrCode,
+    tpAmb
+  ].join('|');
 
-  const hash = sha1Hex(`${params}${tokenCSC}`).toUpperCase();
+  const base = consultaUrl.replace(/\/+$/, '');
 
-  return `${consultaUrl}${consultaUrl.includes('?') ? '&' : '?'}${params}&cHashQRCode=${hash}`;
+  return `${base}?p=${dados}`;
 }
 
 function montarInfNFeSupl({ qrCodeUrl, urlChave }) {
@@ -105,11 +94,11 @@ function anexarInfNFeSupl(xmlAssinado, infNFeSupl) {
     return xml;
   }
 
-  if (!xml.includes('</NFe>')) {
-    throw new Error('Tag </NFe> não encontrada ao anexar infNFeSupl.');
+  if (!xml.includes('</infNFe>')) {
+    throw new Error('Tag </infNFe> não encontrada ao anexar infNFeSupl.');
   }
 
-  return xml.replace('</NFe>', `${infNFeSupl}</NFe>`);
+  return xml.replace('</infNFe>', `</infNFe>${infNFeSupl}`);
 }
 
 function buildNfceXml({ config, venda, itens, numero }) {
